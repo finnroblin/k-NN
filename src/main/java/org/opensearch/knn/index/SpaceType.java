@@ -58,6 +58,8 @@ public enum SpaceType {
             }
             return 1 / score - 1;
         }
+
+//        @Override
     },
     COSINESIMIL("cosinesimil") {
         /**
@@ -153,6 +155,8 @@ public enum SpaceType {
                 );
             }
         }
+
+
 
         @Override
         public KNNVectorSimilarityFunction getKnnVectorSimilarityFunction() {

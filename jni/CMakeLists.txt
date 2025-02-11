@@ -16,6 +16,7 @@ set(TARGET_LIB_UTIL opensearchknn_util)
 set(TARGET_LIB_COMMON opensearchknn_common)  # common lib for JNI
 set(TARGET_LIB_NMSLIB opensearchknn_nmslib)  # nmslib JNI
 set(TARGET_LIB_FAISS opensearchknn_faiss)    # faiss JNI
+set(TARGET_LIB_LUCENE_KNN_NATIVE opensearchknn_lucene_knn)
 set(TARGET_LIBS "")  # Libs to be installed
 
 set(CMAKE_CXX_STANDARD 17)
@@ -126,6 +127,22 @@ if (${CONFIG_FAISS} STREQUAL ON OR ${CONFIG_ALL} STREQUAL ON OR ${CONFIG_TEST} S
 endif ()
 
 # ---------------------------------------------------------------------------
+
+# -- native lucene knn --
+add_library(${TARGET_LIB_LUCENE_KNN_NATIVE} SHARED
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/lucene_native_service.cpp
+)
+target_link_libraries(${TARGET_LIB_LUCENE_KNN_NATIVE} ${TARGET_LIB_UTIL})
+target_include_directories(${TARGET_LIB_LUCENE_KNN_NATIVE} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    $ENV{JAVA_HOME}/include
+    $ENV{JAVA_HOME}/include/${JVM_OS_TYPE}
+)
+opensearch_set_common_properties(${TARGET_LIB_LUCENE_KNN_NATIVE})
+
+list(APPEND TARGET_LIBS ${TARGET_LIB_LUCENE_KNN_NATIVE})
+
+# --
 
 # --------------------------------- TESTS -----------------------------------
 # Windows : Comment the TESTS for now because the tests are failing(failing to build jni_tests.exe) if we are building our target libraries as SHARED libraries.

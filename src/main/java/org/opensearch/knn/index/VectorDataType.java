@@ -86,7 +86,9 @@ public enum VectorDataType {
 
         @Override
         public FieldType createKnnVectorFieldType(int dimension, KNNVectorSimilarityFunction knnVectorSimilarityFunction) {
-            return KnnVectorField.createFieldType(dimension, knnVectorSimilarityFunction.getVectorSimilarityFunction());
+            return KnnVectorField.createFieldType(dimension, VectorSimilarityFunction.EUCLIDEAN);
+            // NOTE: Euclidian will not be used and is custom. Passing it in is a similar workaround to the Hamming distance.
+//            return NativeKnnVectorField.createFieldType(dimension, VectorSimilarityFunction.EUCLIDEAN);
         }
 
         @Override

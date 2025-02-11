@@ -18,6 +18,9 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+JNIEXPORT jfloat JNICALL Java_org_opensearch_knn_jni_FaissService_l2SquaredNative
+  (JNIEnv *env, jclass cls, jfloatArray queryVector, jfloatArray inputVector);
 /*
  * Class:     org_opensearch_knn_jni_FaissService
  * Method:    initIndex

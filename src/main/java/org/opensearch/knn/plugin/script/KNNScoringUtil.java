@@ -15,11 +15,16 @@ import org.apache.lucene.util.VectorUtil;
 import org.opensearch.knn.index.KNNVectorScriptDocValues;
 import org.opensearch.knn.index.SpaceType;
 import org.opensearch.knn.index.VectorDataType;
+import org.opensearch.knn.jni.FaissService;
+import org.opensearch.knn.jni.LuceneNativeService;
 
 import static org.opensearch.knn.common.KNNValidationUtil.validateByteVectorValue;
 
 public class KNNScoringUtil {
     private static Logger logger = LogManager.getLogger(KNNScoringUtil.class);
+
+
+
 
     /**
      * checks both query vector and input vector has equal dimension
@@ -96,7 +101,8 @@ public class KNNScoringUtil {
      * @return L2 score
      */
     public static float l2Squared(float[] queryVector, float[] inputVector) {
-        return VectorUtil.squareDistance(queryVector, inputVector);
+//        return VectorUtil.squareDistance(queryVector, inputVector);
+        return FaissService.l2SquaredNative(queryVector, inputVector);
     }
 
     /**
