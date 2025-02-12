@@ -94,6 +94,10 @@ public class LuceneFieldMapper extends KNNVectorFieldMapper {
         );
     }
 
+    private KNNVectorSimilarityFunction getCustomKnnSimilarityFunction() {
+        return KNNVectorSimilarityFunction.EUCLIDEAN_NATIVE;
+    }
+
     private LuceneFieldMapper(
         final KNNVectorFieldType mappedFieldType,
         final CreateLuceneFieldMapperInput input,
@@ -117,8 +121,11 @@ public class LuceneFieldMapper extends KNNVectorFieldMapper {
         KNNMethodContext resolvedKnnMethodContext = originalMappingParameters.getResolvedKnnMethodContext();
         VectorDataType vectorDataType = mappedFieldType.getVectorDataType();
 
-        final KNNVectorSimilarityFunction knnVectorSimilarityFunction = resolvedKnnMethodContext.getSpaceType()
-            .getKnnVectorSimilarityFunction();
+//        final KNNVectorSimilarityFunction knnVectorSimilarityFunction = resolvedKnnMethodContext.getSpaceType()
+//            .getKnnVectorSimilarityFunction();
+        // hacky workaround to get lucene native knnVectorSimilarityFunction. There's a better way to do this but waste of time for poc.
+        // Temporarily could allow normal lucene functionality through putting a Java-level config passed in through gradle. Will probably need to cold-load the optimized vs unoptimized jar.
+        final KNNVectorSimilarityFunction knnVectorSimilarityFunction = getCustomKnnSimilarityFunction();
 
         this.fieldType = vectorDataType.createKnnVectorFieldType(knnMappingConfig.getDimension(), knnVectorSimilarityFunction);
 

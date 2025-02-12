@@ -43,7 +43,7 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
 // Note: l2 squared distance only for greater/less comparisons (no need to sqrt)
 JNIEXPORT jfloat JNICALL Java_org_opensearch_knn_jni_FaissService_l2SquaredNative
   (JNIEnv *env, jclass cls, jfloatArray queryVector, jfloatArray inputVector) {
-
+// -> queryvector w fixed mem addr.
     jfloat *queryArr = env->GetFloatArrayElements(queryVector, NULL);
     jfloat *inputArr = env->GetFloatArrayElements(inputVector, NULL);
     jsize length = env->GetArrayLength(queryVector);

@@ -23,9 +23,6 @@ import static org.opensearch.knn.common.KNNValidationUtil.validateByteVectorValu
 public class KNNScoringUtil {
     private static Logger logger = LogManager.getLogger(KNNScoringUtil.class);
 
-
-
-
     /**
      * checks both query vector and input vector has equal dimension
      *

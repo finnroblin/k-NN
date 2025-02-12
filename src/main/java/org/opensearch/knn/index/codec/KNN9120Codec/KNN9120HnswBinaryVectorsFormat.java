@@ -37,6 +37,8 @@ public final class KNN9120HnswBinaryVectorsFormat extends KnnVectorsFormat {
     private final int maxConn;
     private final int beamWidth;
     private static final FlatVectorsFormat flatVectorsFormat = new Lucene99FlatVectorsFormat(new KNN9120BinaryVectorScorer());
+//private static final FlatVectorsFormat flatVectorsFormat = new Lucene99FlatVectorsFormat(new KNN9120NativeLuceneScorer());
+
     private final int numMergeWorkers;
     private final TaskExecutor mergeExec;
 

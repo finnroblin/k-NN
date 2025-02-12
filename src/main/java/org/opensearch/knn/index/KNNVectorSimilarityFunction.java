@@ -17,7 +17,7 @@ import static org.apache.lucene.util.VectorUtil.squareDistance;
  * Wrapper class of VectorSimilarityFunction to support more function than what Lucene provides
  */
 public enum KNNVectorSimilarityFunction {
-//    EUCLIDEAN(VectorSimilarityFunction.EUCLIDEAN),
+    EUCLIDEAN(VectorSimilarityFunction.EUCLIDEAN),
 //            (
 //            new KNNSimilarityFunction() {
 //        @Override
@@ -31,26 +31,44 @@ public enum KNNVectorSimilarityFunction {
 //        }
 //    }
 //    ),
-    EUCLIDEAN(null) {
-    @Override
-    public float compare(float[] v1, float[] v2) {
-        return KNNScoringUtil.l2Squared(v1, v2);
-    }
-
-    @Override
-    public float compare(byte[] v1, byte[] v2) {
-        return 1 / (1f + squareDistance(v1, v2));
-    }
-
-
+//    EUCLIDEAN(null) {
 //    @Override
-//    public VectorSimilarityFunction getVectorSimilarityFunction() {
-//        // For binary vectors using Lucene engine we instead implement a custom BinaryVectorScorer
-//        throw new IllegalStateException("VectorSimilarityFunction is not available for Euclidian space");
-//
+//    public float compare(float[] v1, float[] v2) {
+//        return KNNScoringUtil.l2Squared(v1, v2);
 //    }
+//
+//    @Override
+//    public float compare(byte[] v1, byte[] v2) {
+//        return 1 / (1f + squareDistance(v1, v2));
+//    }
+//
+//
+////    @Override
+////    public VectorSimilarityFunction getVectorSimilarityFunction() {
+////        // For binary vectors using Lucene engine we instead implement a custom BinaryVectorScorer
+////        throw new IllegalStateException("VectorSimilarityFunction is not available for Euclidian space");
+////
+////    }
+//
+//},
+    EUCLIDEAN_NATIVE(null) {
+        @Override
+        public float compare(float[] v1, float[] v2) {
+            return KNNScoringUtil.l2Squared(v1, v2);
+        }
 
-},
+        @Override
+        public float compare(byte[] v1, byte[] v2) {
+            return 1 / (1f + squareDistance(v1, v2));
+        }
+
+        @Override
+        public VectorSimilarityFunction getVectorSimilarityFunction() {
+            // For binary vectors using Lucene engine we instead implement a custom BinaryVectorScorer
+            throw new IllegalStateException("VectorSimilarityFunction is not available for Euclidian space");
+
+        }
+    },
     DOT_PRODUCT(VectorSimilarityFunction.DOT_PRODUCT),
     COSINE(VectorSimilarityFunction.COSINE),
     MAXIMUM_INNER_PRODUCT(VectorSimilarityFunction.MAXIMUM_INNER_PRODUCT),
