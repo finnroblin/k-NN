@@ -44,7 +44,8 @@ public class KNN9120PerFieldKnnVectorsFormat extends BasePerFieldKnnVectorsForma
                         mergeThreadCountAndExecutorService.v2()
                     );
                 }
-                else if (knnVectorsFormatParams.getSpaceType() == SpaceType.L2) {
+                else if (knnVectorsFormatParams.getSpaceType() == SpaceType.L2 || knnVectorsFormatParams.getSpaceType() == SpaceType.INNER_PRODUCT_NATIVE
+                        ) {
                     return new KNN9120HnswNativeLuceneVectorsFormat(
                         knnVectorsFormatParams.getMaxConnections(),
                         knnVectorsFormatParams.getBeamWidth(),

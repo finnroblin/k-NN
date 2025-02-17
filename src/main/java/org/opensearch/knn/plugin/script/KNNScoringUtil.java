@@ -321,6 +321,11 @@ public class KNNScoringUtil {
         return VectorUtil.dotProduct(queryVector, inputVector);
     }
 
+    public static float innerProductScaledNative(float[] queryVector, float[] inputVector) {
+        requireEqualDimension(queryVector, inputVector);
+        return FaissService.innerProductScaledNative(queryVector, inputVector);
+    }
+
     /**
      * This method calculates dot product distance between byte query vector
      * and byte input vector

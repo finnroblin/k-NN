@@ -40,7 +40,7 @@ public final class KNN9120HnswNativeLuceneVectorsFormat extends KnnVectorsFormat
     private final int numMergeWorkers;
     private final TaskExecutor mergeExec;
 
-    private static final String NAME = "KNN9120KNN9120HnswNativeLuceneVectorsFormat";
+    private static final String NAME = "KNN9120HnswNativeLuceneVectorsFormat";
 
     /**
      * Constructor logic is identical to {@link org.apache.lucene.codecs.lucene99.Lucene99HnswVectorsFormat#Lucene99HnswVectorsFormat()}

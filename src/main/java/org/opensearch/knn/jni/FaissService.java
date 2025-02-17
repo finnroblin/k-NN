@@ -61,6 +61,7 @@ public class FaissService {
     }
     public static native float l2SquaredNative(float[] queryVector, float[] inputVector);
 
+    public static native float innerProductScaledNative(float[] queryVector, float[] inputVector);
 
     /**
      * Initialize an index for the native library. Takes in numDocs to

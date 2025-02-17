@@ -112,6 +112,20 @@ public enum SpaceType {
             return 1 / (1 + rawScore);
         }
     },
+    INNER_PRODUCT_NATIVE("innerproduct_native") {
+        @Override
+        public float scoreTranslation(float rawScore) {
+            if (rawScore >= 0) {
+                return 1 / (1 + rawScore);
+            }
+            return -rawScore + 1;
+        }
+
+        @Override
+        public KNNVectorSimilarityFunction getKnnVectorSimilarityFunction() {
+            return KNNVectorSimilarityFunction.MAXIMUM_INNER_PRODUCT_NATIVE;
+        }
+    },
     INNER_PRODUCT("innerproduct") {
         /**
          * The inner product has a range of [-Float.MAX_VALUE, Float.MAX_VALUE], with a more similar result being

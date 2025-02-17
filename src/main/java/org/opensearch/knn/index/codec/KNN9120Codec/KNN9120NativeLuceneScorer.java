@@ -41,7 +41,9 @@ public class KNN9120NativeLuceneScorer implements FlatVectorsScorer {
 
         @Override
         public float score(int node) throws IOException {
-            return KNNVectorSimilarityFunction.EUCLIDEAN.compare(queryVector, vectorValues.vectorValue(node));
+            // TODO modify here.
+//            return KNNVectorSimilarityFunction.EUCLIDEAN.compare(queryVector, vectorValues.vectorValue(node));
+            return KNNVectorSimilarityFunction.MAXIMUM_INNER_PRODUCT_NATIVE.compare(queryVector, vectorValues.vectorValue(node));
         }
 
         @Override

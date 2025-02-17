@@ -19,6 +19,9 @@
 extern "C" {
 #endif
 
+JNIEXPORT jfloat JNICALL Java_org_opensearch_knn_jni_FaissService_innerProductScaledNative
+  (JNIEnv *env, jclass cls, jfloatArray queryVector, jfloatArray inputVector);
+
 JNIEXPORT jfloat JNICALL Java_org_opensearch_knn_jni_FaissService_l2SquaredNative
   (JNIEnv *env, jclass cls, jfloatArray queryVector, jfloatArray inputVector);
 /*
@@ -37,6 +40,7 @@ JNIEXPORT jlong JNICALL Java_org_opensearch_knn_jni_FaissService_initIndex(JNIEn
 JNIEXPORT jlong JNICALL Java_org_opensearch_knn_jni_FaissService_initBinaryIndex(JNIEnv * env, jclass cls,
                                                                                  jlong numDocs, jint dimJ,
                                                                                  jobject parametersJ);
+
 
 /*
  * Class:     org_opensearch_knn_jni_FaissService

@@ -64,7 +64,7 @@ public class KNNScoringUtilTests extends KNNTestCase {
         float dotProduct = 12.0f;
         float expectedScore = (float) (dotProduct / (Math.sqrt(queryVectorMagnitude * inputVectorMagnitude)));
 
-        Float actualScore = KNNScoringUtil.cosinesimil(queryVector, inputVector);
+        float actualScore = KNNScoringUtil.cosinesimil(queryVector, inputVector);
         assertEquals(expectedScore, actualScore, 0.0001);
     }
 

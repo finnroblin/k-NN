@@ -10,6 +10,7 @@ import org.opensearch.knn.plugin.script.KNNScoringUtil;
 
 import java.util.Vector;
 
+import static org.apache.lucene.util.VectorUtil.scaleMaxInnerProductScore;
 import static org.apache.lucene.util.VectorUtil.squareDistance;
 
 
@@ -72,6 +73,23 @@ public enum KNNVectorSimilarityFunction {
     DOT_PRODUCT(VectorSimilarityFunction.DOT_PRODUCT),
     COSINE(VectorSimilarityFunction.COSINE),
     MAXIMUM_INNER_PRODUCT(VectorSimilarityFunction.MAXIMUM_INNER_PRODUCT),
+    MAXIMUM_INNER_PRODUCT_NATIVE(null) {
+        @Override
+        public float compare(float[] v1, float[] v2) {
+            return KNNScoringUtil.innerProductScaledNative(v1, v2);
+        }
+
+        @Override
+        public float compare(byte[] v1, byte[] v2) {
+            throw new IllegalStateException("can't binary compare in native for Maximum Inner Product space");
+        }
+
+        @Override
+        public VectorSimilarityFunction getVectorSimilarityFunction() {
+            // For binary vectors using Lucene engine we instead implement a custom BinaryVectorScorer
+            throw new IllegalStateException("VectorSimilarityFunction is not available for Maximum Inner Product space");
+        }
+    },
     HAMMING(null) {
         @Override
         public float compare(float[] v1, float[] v2) {
