@@ -213,19 +213,17 @@ public class ExactSearcher {
                 spaceType
             );
         }
-        final byte[] quantizedQueryVector;
-        final SegmentLevelQuantizationInfo segmentLevelQuantizationInfo;
+        byte[] quantizedQueryVector = null;
+        SegmentLevelQuantizationInfo segmentLevelQuantizationInfo = null;
         if (exactSearcherContext.isUseQuantizedVectorsForSearch()) {
             // Build Segment Level Quantization info.
-            segmentLevelQuantizationInfo = SegmentLevelQuantizationInfo.build(reader, fieldInfo, exactSearcherContext.getField());
-            // Quantize the Query Vector Once.
-            quantizedQueryVector = SegmentLevelQuantizationUtil.quantizeVector(
-                exactSearcherContext.getFloatQueryVector(),
-                segmentLevelQuantizationInfo
-            );
-        } else {
-            segmentLevelQuantizationInfo = null;
-            quantizedQueryVector = null;
+            segmentLevelQuantizationInfo = SegmentLevelQuantizationInfo.build(reader, fieldInfo, knnQuery.getField());
+            // Quantize the Query Vector Once. Or transform it
+            if (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)) {
+                SegmentLevelQuantizationUtil.transformVector(exactSearcherContext.getFloatQueryVector(), segmentLevelQuantizationInfo);
+            } else {
+                quantizedQueryVector = SegmentLevelQuantizationUtil.quantizeVector(exactSearcherContext.getFloatQueryVector(), segmentLevelQuantizationInfo);
+            }
         }
 
         final KNNVectorValues<float[]> vectorValues = KNNVectorValuesFactory.getVectorValues(fieldInfo, reader);
