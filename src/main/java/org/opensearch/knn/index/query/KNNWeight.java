@@ -145,6 +145,7 @@ public class KNNWeight extends Weight {
      * @return A Map of docId to scores for top k results
      */
     public PerLeafResult searchLeaf(LeafReaderContext context, int k) throws IOException {
+        // Finn here
         final SegmentReader reader = Lucene.segmentReader(context.reader());
         final String segmentName = reader.getSegmentName();
 
@@ -330,6 +331,7 @@ public class KNNWeight extends Weight {
         KNNCounter.GRAPH_QUERY_REQUESTS.increment();
 
         // We need to first get index allocation
+        // Finn here 2
         NativeMemoryAllocation indexAllocation;
         try {
             indexAllocation = nativeMemoryCacheManager.get(
@@ -409,6 +411,7 @@ public class KNNWeight extends Weight {
             GRAPH_QUERY_ERRORS.increment();
             throw new RuntimeException(e);
         } finally {
+            // Finn here 3
             indexAllocation.readUnlock();
             indexAllocation.decRef();
         }
