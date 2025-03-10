@@ -18,6 +18,7 @@
 #include "faiss_wrapper.h"
 #include "jni_util.h"
 #include "faiss_stream_support.h"
+#include "faiss/utils/distances_simd.cpp"
 
 static knn_jni::JNIUtil jniUtil;
 static const jint KNN_FAISS_JNI_VERSION = JNI_VERSION_1_1;
@@ -616,17 +617,10 @@ JNIEXPORT jfloat JNICALL Java_org_opensearch_knn_jni_FaissService_innerProductSc
 
     float sum = 0.0f;
 
-    // Align arrays for better vectorization
-    #if defined(__GNUC__) || defined(__clang__)
-    #pragma GCC ivdep
-    #endif
-//    #pragma omp simd reduction(+:sum) aligned(queryArr,inputArr:32)
-    #pragma unroll 4
-    for (int i = 0; i < length; i++) {
-        // FMA pattern: sum = sum + (queryArr[i] * inputArr[i])
-        sum = std::fma(queryArr[i], inputArr[i], sum);
-    }
-
+    // call faiss with 1 vector. May be faster for dimensions of 1, 2, 4, 8 (probably better for quantization).
+    faiss::fvec_inner_products_ny(&sum, queryArr, inputArr, length, 1);
+    // might be faster
+    // fvec_inner_product
     // scale due to lucene restrictions
     sum = (sum < 0.0f) ? (1.0f / (1.0f - sum)) : (sum + 1.0f);
 
