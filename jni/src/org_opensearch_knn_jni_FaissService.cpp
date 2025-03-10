@@ -618,9 +618,9 @@ JNIEXPORT jfloat JNICALL Java_org_opensearch_knn_jni_FaissService_innerProductSc
     float sum = 0.0f;
 
     // call faiss with 1 vector. May be faster for dimensions of 1, 2, 4, 8 (probably better for quantization).
-    faiss::fvec_inner_products_ny(&sum, queryArr, inputArr, length, 1);
+//    faiss::fvec_inner_products_ny(&sum, queryArr, inputArr, length, 1);
     // might be faster
-    // fvec_inner_product
+    sum = faiss::fvec_inner_product(queryArr, inputArr,  length);
     // scale due to lucene restrictions
     sum = (sum < 0.0f) ? (1.0f / (1.0f - sum)) : (sum + 1.0f);
 
