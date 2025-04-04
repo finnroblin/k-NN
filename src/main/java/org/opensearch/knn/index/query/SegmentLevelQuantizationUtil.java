@@ -9,8 +9,6 @@ import lombok.experimental.UtilityClass;
 import org.apache.lucene.index.LeafReader;
 import org.opensearch.knn.index.codec.KNN990Codec.QuantizationConfigKNNCollector;
 import org.opensearch.knn.index.quantizationservice.QuantizationService;
-import org.opensearch.knn.quantization.enums.ScalarQuantizationType;
-import org.opensearch.knn.quantization.models.quantizationParams.ScalarQuantizationParams;
 import org.opensearch.knn.quantization.models.quantizationState.QuantizationState;
 
 import java.io.IOException;
@@ -27,8 +25,8 @@ public class SegmentLevelQuantizationUtil {
     public static boolean isAdcEnabled(SegmentLevelQuantizationInfo segmentLevelQuantizationInfo) {
         return true;
         // return segmentLevelQuantizationInfo != null
-        //     && ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.ONE_BIT)
-        //         .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier());
+        // && ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.ONE_BIT)
+        // .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier());
     }
 
     /**
