@@ -89,6 +89,7 @@ public class VectorIdsKNNIterator implements KNNIterator {
     protected float computeScore() throws IOException {
         final float[] vector = knnFloatVectorValues.getVector();
         if (segmentLevelQuantizationInfo != null) {
+            // TODO here
             if (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)) {
                 double distance = 0.0f;
                 for (int i = 0; i < vector.length; i++) {

@@ -41,7 +41,7 @@ namespace knn_jni {
                 // -1 << 3 *query[i]
                 float score = 0.0f;
                 for (int i = 0; i < this->dimension; i++) {
-                    score += (code[(i / sizeof(uint8_t))] & (1 << (i % sizeof(uint8_t)))) == 0 ? 0 : -1*query[i];
+                    score += (code[(i / sizeof(uint8_t))] & (1 << (i % sizeof(uint8_t)))) == 0 ? -1 * query[i] * query[i] : -1 * (1- query[i]) * (1-query[i]);
                 }
                 return score;
             }
@@ -52,7 +52,7 @@ namespace knn_jni {
 
             virtual float symmetric_dis(faiss::idx_t i, faiss::idx_t j) override {
                 // Just return hamming distance for now...
-                return faiss::hamming<1, float>(&this->codes[i], &this->codes[j]);
+            return faiss::hamming<1, float>(&this->codes[i], &this->codes[j]);
             };
         };
 

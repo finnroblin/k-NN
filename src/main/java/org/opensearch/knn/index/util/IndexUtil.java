@@ -331,7 +331,8 @@ public class IndexUtil {
     }
 
     public static boolean isADCEnabled(KNNEngine knnEngine, Map<String, Object> parameters) {
-        return KNNEngine.FAISS == knnEngine && parameters.get("adc_enabled") != null && (boolean) parameters.get("adc_enabled");
+        return true;
+        // return KNNEngine.FAISS == knnEngine && parameters.get("adc_enabled") != null && (boolean) parameters.get("adc_enabled");
     }
 
     /**

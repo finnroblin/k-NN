@@ -25,9 +25,10 @@ import java.util.Locale;
 public class SegmentLevelQuantizationUtil {
 
     public static boolean isAdcEnabled(SegmentLevelQuantizationInfo segmentLevelQuantizationInfo) {
-        return segmentLevelQuantizationInfo != null
-            && ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.ONE_BIT)
-                .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier());
+        return true;
+        // return segmentLevelQuantizationInfo != null
+        //     && ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.ONE_BIT)
+        //         .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier());
     }
 
     /**
