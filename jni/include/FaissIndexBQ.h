@@ -33,17 +33,41 @@ namespace knn_jni {
             }
 
             virtual float distance_to_code(const uint8_t* code) override {
+
+                std::cout << "distance to code called, normalied query vector: ";
+
+                for (int i = 0; i < this->dimension; i++) { 
+                    std::cout << query[i] << " ";
+                }
+
+                std::cout << "\n END QUERY VECTOR \n";
+
                 // Compute the dot product between the 2
                 // TODO: How can we do this better for 2-bit and 4-bit
                 // I think we would want to just shift the multiplier of 1. i.e.
                 // -1 << 1 *query[i]
                 // -1 << 2 *query[i]
                 // -1 << 3 *query[i]
+                // Debug print first few values
+                // for (int i = 0; i < std::min(dimension, 32); i++) {
+                    // std::cout << "bit " << i << ": " 
+                            // << ((codes[i / 8] & (1 << (i % 8))) != 0) << std::endl;
+                // }
                 float score = 0.0f;
                 for (int i = 0; i < this->dimension; i++) {
-                    score += (code[(i / sizeof(uint8_t))] & (1 << (i % sizeof(uint8_t)))) == 0 ? -1 * query[i] * query[i] : -1 * (1- query[i]) * (1-query[i]);
+                    // score += (code[(i / sizeof(uint8_t))] & (1 << (i % sizeof(uint8_t)))) == 0 ? -1 * query[i] * query[i] : -1 * (1- query[i]) * (1-query[i]);
+                    // score += (code[(i / sizeof(uint8_t))] & (1 << (i % sizeof(uint8_t)))) == 0 ? 0 : -1*query[i];
+                    // score += (code[(i / sizeof(uint8_t))] & (1 << (i % sizeof(uint8_t)))) == 0 ? query[i] * query[i] : (1- query[i]) * (1-query[i]);
+                    // float code_val = (code[(i / 8)] & (1 << (i % 8))) ? 1.0f : 0.0f;  // or whatever your quantization range isb
+                    // float code_val = (code[(i / 8)] & (1 << (7 - (i % 8)))) ? 1.0f : 0.0f;  // or whatever your quantization range isb
+                    
+                    float code_val = (code[(i / 8)] & (1 << (i % 8))) ? 1.0f : 0.0f;  // or whatever your quantization range isb
+
+
+                    score += (query[i] - code_val) * (query[i] - code_val);
+                    // score += (code[(i / (8 * sizeof(uint8_t)))] & (1 << (i % (8 * sizeof(uint8_t))))) == 0 ? query[i] * query[i] : (1- query[i]) * (1-query[i]);
                 }
-                return score;
+                return std::sqrt(score);
             }
 
             virtual void set_query(const float* x) override {
@@ -51,6 +75,7 @@ namespace knn_jni {
             };
 
             virtual float symmetric_dis(faiss::idx_t i, faiss::idx_t j) override {
+                std::cout << " in hamming sym dist for some reason...";
                 // Just return hamming distance for now...
             return faiss::hamming<1, float>(&this->codes[i], &this->codes[j]);
             };
@@ -72,6 +97,7 @@ namespace knn_jni {
 
             /** a FlatCodesDistanceComputer offers a distance_to_code method */
             faiss::FlatCodesDistanceComputer* get_FlatCodesDistanceComputer() const override {
+                std::cout << "number of codes: " << this->codes.size() << "\n\n\n";
                 return new knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer((const uint8_t*) (this->codes.data()), 1, this->d);
             };
 

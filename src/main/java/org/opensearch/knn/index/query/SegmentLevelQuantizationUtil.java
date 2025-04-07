@@ -24,6 +24,7 @@ public class SegmentLevelQuantizationUtil {
 
     public static boolean isAdcEnabled(SegmentLevelQuantizationInfo segmentLevelQuantizationInfo) {
         return true;
+        // return false;
         // return segmentLevelQuantizationInfo != null
         // && ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.ONE_BIT)
         // .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier());
