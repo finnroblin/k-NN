@@ -34,13 +34,13 @@ namespace knn_jni {
 
             virtual float distance_to_code(const uint8_t* code) override {
 
-                std::cout << "distance to code called, normalied query vector: ";
+                // std::cout << "distance to code called, normalied query vector: ";
 
-                for (int i = 0; i < this->dimension; i++) { 
-                    std::cout << query[i] << " ";
-                }
+                // for (int i = 0; i < this->dimension; i++) { 
+                //     std::cout << query[i] << " ";
+                // }
 
-                std::cout << "\n END QUERY VECTOR \n";
+                // std::cout << "\n END QUERY VECTOR \n";
 
                 // Compute the dot product between the 2
                 // TODO: How can we do this better for 2-bit and 4-bit
@@ -53,21 +53,25 @@ namespace knn_jni {
                     // std::cout << "bit " << i << ": " 
                             // << ((codes[i / 8] & (1 << (i % 8))) != 0) << std::endl;
                 // }
+                std::cout << "called here\n\n\n";
                 float score = 0.0f;
                 for (int i = 0; i < this->dimension; i++) {
                     // score += (code[(i / sizeof(uint8_t))] & (1 << (i % sizeof(uint8_t)))) == 0 ? -1 * query[i] * query[i] : -1 * (1- query[i]) * (1-query[i]);
                     // score += (code[(i / sizeof(uint8_t))] & (1 << (i % sizeof(uint8_t)))) == 0 ? 0 : -1*query[i];
                     // score += (code[(i / sizeof(uint8_t))] & (1 << (i % sizeof(uint8_t)))) == 0 ? query[i] * query[i] : (1- query[i]) * (1-query[i]);
-                    // float code_val = (code[(i / 8)] & (1 << (i % 8))) ? 1.0f : 0.0f;  // or whatever your quantization range isb
-                    // float code_val = (code[(i / 8)] & (1 << (7 - (i % 8)))) ? 1.0f : 0.0f;  // or whatever your quantization range isb
-                    
-                    float code_val = (code[(i / 8)] & (1 << (i % 8))) ? 1.0f : 0.0f;  // or whatever your quantization range isb
+                    // float code_val = (code[(i / 8)] & (1 << (i % 8))) ? 1.0f : 0.0f;
+                    // float code_val = (code[(i / 8)] & (1 << (7 - (i % 8)))) ? 1.0f : 0.0f;
+//                    std::cout << ((code[(i / 8)] & (1 << (i % 8))) != 0);
+//                    if (i % 32 == 31) std::cout << "\n";
+                    float code_val = (code[(i / 8)] & (1 << (i % 8))) ? 1.0f : 0.0f;
 
 
                     score += (query[i] - code_val) * (query[i] - code_val);
                     // score += (code[(i / (8 * sizeof(uint8_t)))] & (1 << (i % (8 * sizeof(uint8_t))))) == 0 ? query[i] * query[i] : (1- query[i]) * (1-query[i]);
                 }
-                return std::sqrt(score);
+//                return std::sqrt(score);
+//                std::cout << "score: " << score;
+                return score;
             }
 
             virtual void set_query(const float* x) override {
@@ -84,12 +88,16 @@ namespace knn_jni {
         struct FaissIndexBQ : faiss::IndexFlatCodes {
 
             FaissIndexBQ(faiss::idx_t d, std::vector<uint8_t> codes) {
+                std::cout << "FaissIndexBQ constructor called with codes lenght" << codes.size() << "and codes 0\n";
+//                << codes[0] << "\n";
+                std::cout << "HEREHERHERH\n\n\n\n\n\n\n\n\n";
                 this->d = d;
                 this->codes = codes;
                 this->code_size = 1;
             }
 
             void init(faiss::Index * parent, faiss::Index * grand_parent) {
+                std::cout << "ehreheragainga\n\n\n\n";
                 this->ntotal = this->codes.size() / (this->d / 8);
                 parent->ntotal = this->ntotal;
                 grand_parent->ntotal = this->ntotal;
@@ -97,7 +105,16 @@ namespace knn_jni {
 
             /** a FlatCodesDistanceComputer offers a distance_to_code method */
             faiss::FlatCodesDistanceComputer* get_FlatCodesDistanceComputer() const override {
-                std::cout << "number of codes: " << this->codes.size() << "\n\n\n";
+                std::cout << "number of codes: " << this->codes.size() << "\n\n\n HEREHERHEHEREHRHEHRUIHWEUIFHIU\n\\n\n\n\n\n"; // 4400
+//                std::cout << this->codes[0] << "\n";
+                std::cout << this->ntotal << "\n";
+                std::cout << this->code_size << "\n";
+//                std::cout << this->d << "\n";
+
+//                for (uint8_t code : this->codes) {
+//                    std::cout << code << " ";
+//                }
+
                 return new knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer((const uint8_t*) (this->codes.data()), 1, this->d);
             };
 

@@ -19,6 +19,7 @@
 #include "test_util.h"
 #include "faiss/IndexHNSW.h"
 #include "faiss/IndexIVFPQ.h"
+#include "FaissIndexBQ.h"
 #include "mocks/faiss_index_service_mock.h"
 #include "native_stream_support_util.h"
 
@@ -161,6 +162,7 @@ TEST(FaissCreateIndexTest, BasicAssertions) {
 }
 
 TEST(FaissCreateBinaryIndexTest, BasicAssertions) {
+    EXPECT_TRUE(false) << "FIAFILAILFJD\n\n\n\n\n\n||||||";
     // Define the data
     faiss::idx_t numIds = 200;
     std::vector<faiss::idx_t> ids;
@@ -212,6 +214,348 @@ TEST(FaissCreateBinaryIndexTest, BasicAssertions) {
                                  &mockIndexService,
                                  insertions);
 }
+
+TEST(FaissADCTest, BasicAssertions2) {
+    /*
+    
+      basically need to get perf info and make sure it works... generate dummy data between 0 and 1 and compare the differents impls. 
+    */
+    // Define the data
+    SCOPED_TRACE("Debug message here");  // This will show up in test output
+    std::cout << "here in \n\n\n\n\nthe faiss adc testing part\n";
+    std::cerr << "here in \n\n\n\n\nthe faiss adc testing part\n";
+
+    ASSERT_TRUE(true) << "fjiowjfiowejiof\n\n\\n\nn";
+
+    ASSERT_TRUE(false) << "diagnostic message\n\n\n\n\n\n\n";
+    faiss::idx_t numIds = 200;
+    std::vector<faiss::idx_t> ids;
+    std::vector<uint8_t> vectors;
+    int dim = 128;
+    vectors.reserve(numIds);
+    for (int64_t i = 0; i < numIds; ++i) {
+      ids.push_back(i);
+      for (int j = 0; j < dim / 8; ++j) {
+        vectors.push_back(test_util::RandomInt(0, 255));
+      }
+    }
+
+    std::string indexPath = test_util::RandomString(10, "tmp/", ".faiss");
+    std::string spaceType = knn_jni::HAMMING;
+    std::string indexDescription = "BHNSW32";
+
+    std::unordered_map<std::string, jobject> parametersMap;
+    parametersMap[knn_jni::SPACE_TYPE] = (jobject)&spaceType;
+    parametersMap[knn_jni::INDEX_DESCRIPTION] = (jobject)&indexDescription;
+    std::unordered_map<std::string, jobject> subParametersMap;
+    parametersMap[knn_jni::PARAMETERS] = (jobject)&subParametersMap;
+
+    // Set up jni
+    NiceMock<JNIEnv> jniEnv;
+    NiceMock<test_util::MockJNIUtil> mockJNIUtil;
+    JavaFileIndexOutputMock javaFileIndexOutputMock {indexPath};
+    setUpJavaFileOutputMocking(javaFileIndexOutputMock, mockJNIUtil, false);
+
+    // Create the index
+    std::unique_ptr<FaissMethods> faissMethods(new FaissMethods());
+    NiceMock<MockIndexService> mockIndexService(std::move(faissMethods));
+    int insertions = 10;
+    EXPECT_CALL(mockIndexService, initIndex(_, _, faiss::METRIC_L2, indexDescription, dim, (int)numIds, 0, subParametersMap))
+        .Times(1);
+    EXPECT_CALL(mockIndexService, insertToIndex(dim, numIds / insertions, 0, _, _, _))
+        .Times(insertions);
+    EXPECT_CALL(mockIndexService, writeIndex(_, _))
+        .Times(1);
+
+    // This method calls delete vectors at the end
+    createBinaryIndexIteratively(&mockJNIUtil,
+                                 &jniEnv,
+                                 ids,
+                                 vectors,
+                                 dim,
+                                 (jobject) (&javaFileIndexOutputMock),
+                                 parametersMap,
+                                 &mockIndexService,
+                                 insertions);
+
+    // once we have created the binary index, somehow call into the FaissIndexBQ header file. 
+
+
+}
+
+TEST(FaissIndexBQDirectTest, BasicAssertions45) {
+        // Test 1-bit quantization with 8D vectors
+        int dim = 8;
+    
+        // Create two 8D binary vectors where each dimension is 1 bit
+        // Vector 1: [1, 0, 1, 0, 1, 0, 1, 0]
+        // Vector 2: [1, 1, 1, 1, 0, 0, 0, 0]
+        std::vector<uint8_t> codes = {
+            0b10101010,  // First vector packed into a byte
+            0b11110000   // Second vector packed into a byte
+        };
+        
+        knn_jni::faiss_wrapper::FaissIndexBQ index(dim, codes);
+        
+        // Create a distance computer
+        std::unique_ptr<knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer> dc(
+            new knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer(
+                codes.data(), 1, dim));
+        
+        // Test with query vector [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+        std::vector<float> query(dim, 1.0);
+        dc->set_query(query.data());
+        
+        // For first vector [1,0,1,0,1,0,1,0]:
+        // Should give -4.0 (four 1s multiplied by -1)
+        float dist1 = dc->distance_to_code(&codes[0]);
+        ASSERT_FLOAT_EQ(dist1, -4.0);
+        
+        // For second vector [1,1,1,1,0,0,0,0]:
+        // Should give -4.0 (four 1s multiplied by -1)
+        float dist2 = dc->distance_to_code(&codes[1]);
+        ASSERT_FLOAT_EQ(dist2, -4.0);    
+}
+
+TEST(FaissIndexBQDirectTest, MultipleQueries) {
+    int dim = 8;
+    int num_vectors = 4;
+    
+    // Create test vectors with values between -127 and 128
+    // These would be the original vectors before quantization
+    std::vector<std::vector<int8_t>> original_vectors = {
+        {100, -50, 75, -25, 60, -40, 30, -80},    // Vector 1
+        {-127, 120, -100, 80, -60, 40, -20, 10},  // Vector 2
+        {50, -50, 50, -50, 50, -50, 50, -50},     // Vector 3
+        {0, 0, 0, 0, 127, 127, 127, 127}          // Vector 4
+    };
+    
+    // Quantize to 1-bit based on sign (positive -> 1, negative/zero -> 0)
+    std::vector<uint8_t> codes = {
+        0b11010101,  // Vector 1 quantized (pos,neg,pos,neg,pos,neg,pos,neg)
+        0b01010101,  // Vector 2 quantized (neg,pos,neg,pos,neg,pos,neg,pos)
+        0b10101010,  // Vector 3 quantized (pos,neg,pos,neg,pos,neg,pos,neg)
+        0b00001111   // Vector 4 quantized (zero->0, pos->1)
+    };
+    
+    knn_jni::faiss_wrapper::FaissIndexBQ index(dim, codes);
+    
+    // Create a distance computer
+    std::unique_ptr<knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer> dc(
+        new knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer(
+            codes.data(), 1, dim));
+    
+    // Test several query scenarios
+    std::vector<std::vector<float>> queries = {
+        // Query 1: Similar to Vector 1
+        {90.0f, -45.0f, 70.0f, -20.0f, 55.0f, -35.0f, 25.0f, -75.0f},
+        // Query 2: Similar to Vector 2
+        {-120.0f, 115.0f, -95.0f, 75.0f, -55.0f, 35.0f, -15.0f, 5.0f},
+        // Query 3: Similar to Vector 4 (all positive)
+        {10.0f, 10.0f, 10.0f, 10.0f, 100.0f, 100.0f, 100.0f, 100.0f}
+    };
+
+    for (const auto& query : queries) {
+        dc->set_query(query.data());
+        
+        // Calculate distances to all vectors
+        std::vector<std::pair<float, int>> distances;
+        for (int i = 0; i < num_vectors; i++) {
+            float dist = dc->distance_to_code(&codes[i]);
+            distances.push_back({dist, i});
+        }
+        
+        // Sort by distance
+        std::sort(distances.begin(), distances.end());
+        
+        // Verify that the closest vector makes sense based on the query
+        if (query == queries[0]) {
+            // Query similar to Vector 1 should return Vector 1 as closest
+            ASSERT_EQ(distances[0].second, 0);
+        } else if (query == queries[1]) {
+            // Query similar to Vector 2 should return Vector 2 as closest
+            ASSERT_EQ(distances[0].second, 1);
+        } else if (query == queries[2]) {
+            // Query similar to Vector 4 should return Vector 4 as closest
+            ASSERT_EQ(distances[0].second, 3);
+        }
+    }
+
+}
+
+TEST(FaissADCTest, BasicQuantizationAndMeans) {
+    int dim = 8;
+    int numVectors = 100;
+    
+    // Create vectors with known means
+    std::vector<int8_t> vectors;
+    std::vector<float> expectedMeans = {50.0f, -30.0f, 0.0f, 100.0f, -80.0f, 25.0f, -60.0f, 75.0f};
+    for (float mean : expectedMeans) {
+        auto vec = test_util::GenerateVectorWithMean(dim, mean, 20.0f);
+        vectors.insert(vectors.end(), vec.begin(), vec.end());
+    }
+
+    // Quantize to 1-bit
+    auto codes = test_util::QuantizeVectors(vectors, dim, numVectors, 1);
+    
+    // Compute dimension statistics
+    auto stats = test_util::ComputeDimensionStats(vectors, codes, dim, numVectors);
+    
+    // Verify statistics
+    for (int d = 0; d < dim; d++) {
+        // Zero means should be less than one means for each dimension
+        ASSERT_LE(stats.zero_means[d], stats.one_means[d]);
+        
+        // Each dimension should have some values quantized to both 0 and 1
+        ASSERT_GT(stats.zero_counts[d], 0);
+        ASSERT_GT(stats.one_counts[d], 0);
+        
+        // Total counts should equal number of vectors
+        ASSERT_EQ(stats.zero_counts[d] + stats.one_counts[d], numVectors);
+    }
+}
+
+TEST(FaissADCTest, QueryTransformation) {
+    int dim = 8;
+    int numVectors = 100;
+    
+    // Create test vectors with controlled distribution
+    std::vector<int8_t> vectors = test_util::RandomByteVectors(dim * numVectors, 1, -127, 127);
+    auto codes = test_util::QuantizeVectors(vectors, dim, numVectors, 1);
+    auto stats = test_util::ComputeDimensionStats(vectors, codes, dim, numVectors);
+    
+    // Test query transformation
+    std::vector<std::vector<float>> testQueries = {
+        std::vector<float>(dim, 0.0f),  // Zero query
+        std::vector<float>(dim, 100.0f), // Large positive query
+        std::vector<float>(dim, -100.0f) // Large negative query
+    };
+    
+    for (const auto& query : testQueries) {
+        auto transformed = test_util::TransformQueryADC(query, stats);
+        
+        // Verify transformed query properties
+        for (int d = 0; d < dim; d++) {
+            // If query equals zero mean, should get 0
+            if (std::abs(query[d] - stats.zero_means[d]) < 1e-6) {
+                ASSERT_NEAR(transformed[d], 0.0f, 1e-6);
+            }
+            // If query equals one mean, should get 1
+            if (std::abs(query[d] - stats.one_means[d]) < 1e-6) {
+                ASSERT_NEAR(transformed[d], 1.0f, 1e-6);
+            }
+        }
+    }
+}
+
+TEST(FaissADCTest, NearestNeighborSearch) {
+    int dim = 8;
+    int numVectors = 100;
+    
+    // Create vectors with distinct patterns
+    std::vector<int8_t> vectors;
+    std::vector<float> patterns = {100.0f, -100.0f, 0.0f, 50.0f, -50.0f};
+    for (float pattern : patterns) {
+        auto vec = test_util::GenerateVectorWithMean(dim, pattern, 10.0f);
+        vectors.insert(vectors.end(), vec.begin(), vec.end());
+    }
+    
+    // Fill remaining vectors with random values
+    auto randomVecs = test_util::RandomByteVectors(dim * (numVectors - patterns.size()), 1, -127, 127);
+    vectors.insert(vectors.end(), randomVecs.begin(), randomVecs.end());
+    
+    // Create index and compute ADC statistics
+    auto codes = test_util::QuantizeVectors(vectors, dim, numVectors, 1);
+    knn_jni::faiss_wrapper::FaissIndexBQ index(dim, codes);
+    auto stats = test_util::ComputeDimensionStats(vectors, codes, dim, numVectors);
+    
+    // Create distance computer
+    auto dc = std::unique_ptr<knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer>(
+        new knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer(
+            codes.data(), 1, dim));
+    
+    // Test nearest neighbor search with pattern vectors
+    for (size_t i = 0; i < patterns.size(); i++) {
+        // Create query similar to pattern vector
+        std::vector<float> query(vectors.begin() + i * dim, vectors.begin() + (i + 1) * dim);
+        
+        // Transform query using ADC
+        auto transformed = test_util::TransformQueryADC(query, stats);
+        dc->set_query(transformed.data());
+        
+        // Find nearest neighbors
+        std::vector<std::pair<float, int>> distances;
+        for (int j = 0; j < numVectors; j++) {
+            float dist = dc->distance_to_code(&codes[j]);
+            distances.push_back({dist, j});
+        }
+        
+        // Sort by distance
+        std::sort(distances.begin(), distances.end());
+        
+        // The closest vector should be the original pattern vector
+        ASSERT_EQ(distances[0].second, i);
+    }
+}
+
+TEST(FaissADCTest, EdgeCases) {
+    int dim = 8;
+    int numVectors = 10;
+    
+    // Test edge case vectors
+    std::vector<std::vector<int8_t>> edgeCases = {
+        std::vector<int8_t>(dim, 127),    // All maximum positive
+        std::vector<int8_t>(dim, -128),   // All maximum negative
+        std::vector<int8_t>(dim, 0)       // All zeros
+    };
+    
+    std::vector<int8_t> vectors;
+    for (const auto& edge : edgeCases) {
+        vectors.insert(vectors.end(), edge.begin(), edge.end());
+    }
+    
+    // Add some random vectors
+    auto randomVecs = test_util::RandomByteVectors(dim * (numVectors - edgeCases.size()), 1, -127, 127);
+    vectors.insert(vectors.end(), randomVecs.begin(), randomVecs.end());
+    
+    auto codes = test_util::QuantizeVectors(vectors, dim, numVectors, 1);
+    auto stats = test_util::ComputeDimensionStats(vectors, codes, dim, numVectors);
+    
+    // Test edge case queries
+    std::vector<std::vector<float>> edgeQueries = {
+        std::vector<float>(dim, std::numeric_limits<float>::max()),
+        std::vector<float>(dim, std::numeric_limits<float>::lowest()),
+        std::vector<float>(dim, 0.0f)
+    };
+    
+    for (const auto& query : edgeQueries) {
+        auto transformed = test_util::TransformQueryADC(query, stats);
+        
+        // Verify transformed values are finite
+        for (float val : transformed) {
+            ASSERT_FALSE(std::isinf(val));
+            ASSERT_FALSE(std::isnan(val));
+        }
+    }
+    
+    // Test with zero variance in a dimension
+    std::vector<int8_t> constantVector(dim * numVectors);
+    std::fill(constantVector.begin(), constantVector.end(), 42);
+    auto constantCodes = test_util::QuantizeVectors(constantVector, dim, numVectors, 1);
+    auto constantStats = test_util::ComputeDimensionStats(constantVector, constantCodes, dim, numVectors);
+    
+    std::vector<float> query(dim, 0.0f);
+    auto transformed = test_util::TransformQueryADC(query, constantStats);
+    
+    // Should handle zero variance gracefully
+    for (float val : transformed) {
+        ASSERT_FALSE(std::isinf(val));
+        ASSERT_FALSE(std::isnan(val));
+    }
+}
+
+
+
 
 TEST(FaissCreateIndexFromTemplateTest, BasicAssertions) {
     for (auto throwIOException : std::array<bool, 2> {false, true}) {
@@ -1105,6 +1449,7 @@ TEST(FaissRangeSearchQueryIndexTest_WhenHitMaxWindowResult, BasicAssertions){
         // assert result size is not 0
         ASSERT_NE(0, results->size());
         // assert result size is equal to maxResultWindow
+        ASSERT_TRUE(false) << "fjiowjfiowejiof\n\n\\n\nn";
         ASSERT_EQ(maxResultWindow, results->size());
 
         // Need to free up each result

@@ -42,6 +42,7 @@ import static org.opensearch.knn.common.KNNConstants.METHOD_PARAMETER_NLIST;
 import static org.opensearch.knn.common.KNNConstants.METHOD_PARAMETER_NPROBES;
 import static org.opensearch.knn.common.KNNConstants.METHOD_PARAMETER_SPACE_TYPE;
 import static org.opensearch.knn.common.KNNConstants.MODEL_ID;
+import static org.opensearch.knn.common.KNNConstants.MODE_PARAMETER;
 import static org.opensearch.knn.common.KNNConstants.NAME;
 import static org.opensearch.knn.common.KNNConstants.PARAMETERS;
 import static org.opensearch.knn.common.KNNConstants.TYPE;
@@ -83,6 +84,9 @@ public class RecallTestsIT extends KNNRestTestCase {
     private final static int PQ_CODE_SIZE = 8; // This is low and going to produce bad recall, but reduces build time
     private final static int PQ_M = TEST_DIMENSION / 8; // Will give low recall, but required for test time
 
+    // on disk settings
+    private final static String ON_DISK = "on_disk";
+
     // Setup ground truth for all tests once
     private final static float[][] INDEX_VECTORS = TestUtils.getIndexVectors(DOC_COUNT, TEST_DIMENSION, true);
     private final static float[][] QUERY_VECTORS = TestUtils.getQueryVectors(QUERY_COUNT, TEST_DIMENSION, DOC_COUNT, true);
@@ -100,6 +104,59 @@ public class RecallTestsIT extends KNNRestTestCase {
     public void setupClusterSettings() {
         updateClusterSettings(KNN_ALGO_PARAM_INDEX_THREAD_QTY, 2);
         updateClusterSettings(KNN_MEMORY_CIRCUIT_BREAKER_ENABLED, true);
+    }
+
+    /**
+     * {
+     * 	"properties": {
+     *     {
+     *      "type": "knn_vector",
+     *      "dimension": {TEST_DIMENSION},
+     *      "method": {
+     *          "name":"hnsw",
+     *          "engine":"faiss",
+     *          "space_type": "{SPACE_TYPE}",
+     *          "parameters":{
+     *              "m":{HNSW_M},
+     *              "ef_construction": {HNSW_EF_CONSTRUCTION},
+     *              "ef_search": {HNSW_EF_SEARCH},
+     *              "mode": "on_disk"
+     *          }
+     *       }
+     *     }
+     *   }
+     * }
+     */
+    @SneakyThrows
+    public void testRecall_whenADCENabled_thenRecallAbove40Percent() {
+        // List<SpaceType> spaceTypes = List.of(SpaceType.L2, SpaceType.INNER_PRODUCT, SpaceType.COSINESIMIL);
+        List<SpaceType> spaceTypes = List.of(SpaceType.L2);
+
+        for (SpaceType spaceType : spaceTypes) {
+            String indexName = createIndexName(KNNEngine.FAISS, spaceType);
+            XContentBuilder builder = XContentFactory.jsonBuilder()
+                .startObject()
+                .startObject(PROPERTIES_FIELD)
+                .startObject(TEST_FIELD_NAME)
+                .field(TYPE, TYPE_KNN_VECTOR)
+                .field(DIMENSION, TEST_DIMENSION)
+                .field(MODE_PARAMETER, ON_DISK)
+                .startObject(KNN_METHOD)
+                .field(METHOD_PARAMETER_SPACE_TYPE, spaceType.getValue())
+                .field(KNN_ENGINE, KNNEngine.FAISS.getName())
+                .field(NAME, METHOD_HNSW)
+                .startObject(PARAMETERS)
+                .field(METHOD_PARAMETER_EF_CONSTRUCTION, HNSW_EF_CONSTRUCTION)
+                .field(METHOD_PARAMETER_M, HNSW_M)
+                .field(METHOD_PARAMETER_EF_SEARCH, HNSW_EF_SEARCH)
+                .endObject()
+                .endObject()
+                .endObject()
+                .endObject()
+                .endObject();
+            createIndexAndIngestDocs(indexName, TEST_FIELD_NAME, getSettings(), builder.toString());
+            assertRecall(indexName, spaceType, 0.6f);
+        }
     }
 
     /**
