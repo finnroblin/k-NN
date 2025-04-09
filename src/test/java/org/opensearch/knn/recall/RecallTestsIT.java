@@ -148,7 +148,7 @@ public class RecallTestsIT extends KNNRestTestCase {
                 .startObject(PARAMETERS)
                 .field(METHOD_PARAMETER_EF_CONSTRUCTION, HNSW_EF_CONSTRUCTION)
                 .field(METHOD_PARAMETER_M, HNSW_M)
-                .field(METHOD_PARAMETER_EF_SEARCH, HNSW_EF_SEARCH)
+                .field(METHOD_PARAMETER_EF_SEARCH, 16)
                 .endObject()
                 .endObject()
                 .endObject()

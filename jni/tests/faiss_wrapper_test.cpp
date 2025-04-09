@@ -161,6 +161,110 @@ TEST(FaissCreateIndexTest, BasicAssertions) {
                            insertions);
 }
 
+TEST(FaissIndexBQTest, ComprehensiveTest) {
+    // Test 1: Basic Constructor and Initialization
+    int dim = 16;
+    std::vector<uint8_t> codes = {
+        0b11110000,  // First vector first byte
+        0b00001111,  // First vector second byte
+        0b10101010,  // Second vector first byte
+        0b01010101   // Second vector second byte
+    };
+
+    knn_jni::faiss_wrapper::FaissIndexBQ index(dim, codes);
+
+    // Verify initial state
+    ASSERT_EQ(index.d, dim);
+    ASSERT_EQ(index.code_size, 1);
+    ASSERT_EQ(index.codes, codes);
+
+    // Test 2: Parent Initialization
+    faiss::IndexFlatL2 parent(dim);
+    faiss::IndexFlatL2 grandparent(dim);
+    index.init(&parent, &grandparent);
+
+    // Verify ntotal is properly set for all objects
+    size_t expected_ntotal = codes.size() / (dim / 8); // should be2...
+    ASSERT_EQ(index.ntotal, expected_ntotal);
+    ASSERT_EQ(parent.ntotal, expected_ntotal);
+    ASSERT_EQ(grandparent.ntotal, expected_ntotal);
+
+    // Test 3: Distance Computer Creation and Type
+    std::unique_ptr<faiss::FlatCodesDistanceComputer> dc(index.get_FlatCodesDistanceComputer());
+    auto* custom_dc = dynamic_cast<knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer*>(dc.get());
+    ASSERT_NE(custom_dc, nullptr);
+
+    // Verify distance computer initialization
+    ASSERT_EQ(custom_dc->dimension, dim);
+    ASSERT_EQ(custom_dc->code_size, 1);
+    for (size_t i = 0; i < codes.size(); i++) {
+        ASSERT_EQ(custom_dc->codes[i], codes[i]);
+    }
+
+    // Test 4: Distance Computation
+    // Create test query vectors
+    std::vector<std::vector<float>> test_queries = {
+        std::vector<float>(dim, 1.0f),  // All ones
+        std::vector<float>(dim, 0.0f),  // All zeros
+        {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,  // First half ones
+         0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}  // Second half zeros
+    };
+
+    for (const auto& query : test_queries) {
+        custom_dc->set_query(query.data());
+
+        // Calculate distances to both vectors in codes
+        float dist1 = custom_dc->distance_to_code(&codes[0]);  // First vector
+        float dist2 = custom_dc->distance_to_code(&codes[2]);  // Second vector
+
+        // Verify distances are non-negative
+        ASSERT_GE(dist1, 0.0f);
+        ASSERT_GE(dist2, 0.0f);
+
+        // Verify distances are finite
+        ASSERT_FALSE(std::isinf(dist1));
+        ASSERT_FALSE(std::isnan(dist1));
+        ASSERT_FALSE(std::isinf(dist2));
+        ASSERT_FALSE(std::isnan(dist2));
+    }
+
+    // Test 5: Edge Cases
+    // Test empty codes
+    std::vector<uint8_t> empty_codes;
+    knn_jni::faiss_wrapper::FaissIndexBQ empty_index(dim, empty_codes);
+    ASSERT_EQ(empty_index.ntotal, 0);
+
+    // Test single byte code
+    std::vector<uint8_t> single_byte = {0b10000000};
+    knn_jni::faiss_wrapper::FaissIndexBQ single_byte_index(8, single_byte);
+    auto* single_dc = dynamic_cast<knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer*>(
+        single_byte_index.get_FlatCodesDistanceComputer());
+
+    std::vector<float> zero_query(8, 0.0f);
+    single_dc->set_query(zero_query.data());
+    float dist = single_dc->distance_to_code(single_byte.data());
+    ASSERT_NEAR(dist, 1.0f, 1e-6);  // Distance to single set bit
+
+    // Test 6: Verify symmetric distance computation
+    if (custom_dc != nullptr) {
+        float sym_dist = custom_dc->symmetric_dis(0, 1);
+        ASSERT_GE(sym_dist, 0.0f);
+        ASSERT_FALSE(std::isinf(sym_dist));
+        ASSERT_FALSE(std::isnan(sym_dist));
+    }
+
+    // Test 7: Verify unimplemented methods don't crash
+    std::vector<float> dummy_distances(1);
+    std::vector<faiss::idx_t> dummy_labels(1);
+    std::vector<float> dummy_query(dim);
+
+    // These should not crash
+    index.search(1, dummy_query.data(), 1, dummy_distances.data(), dummy_labels.data());
+    index.merge_from(parent);  // Should do nothing but not crash
+}
+
+
+
 TEST(FaissCreateBinaryIndexTest, BasicAssertions) {
     EXPECT_TRUE(false) << "FIAFILAILFJD\n\n\n\n\n\n||||||";
     // Define the data
@@ -284,15 +388,15 @@ TEST(FaissADCTest, BasicAssertions2) {
 }
 
 TEST(FaissIndexBQDirectTest, BasicAssertions45) {
-        // Test 1-bit quantization with 8D vectors
-        int dim = 8;
+        // Test 1-bit quantization with 16D vectors
+        int dim = 16;
     
         // Create two 8D binary vectors where each dimension is 1 bit
-        // Vector 1: [1, 0, 1, 0, 1, 0, 1, 0]
-        // Vector 2: [1, 1, 1, 1, 0, 0, 0, 0]
         std::vector<uint8_t> codes = {
-            0b10101010,  // First vector packed into a byte
-            0b11110000   // Second vector packed into a byte
+            0b11111000, // 5 ones
+            0b00101010, // 3 ones
+            0b11110000, // 4 ones
+            0b01000000  // 1 one
         };
         
         knn_jni::faiss_wrapper::FaissIndexBQ index(dim, codes);
@@ -309,12 +413,15 @@ TEST(FaissIndexBQDirectTest, BasicAssertions45) {
         // For first vector [1,0,1,0,1,0,1,0]:
         // Should give -4.0 (four 1s multiplied by -1)
         float dist1 = dc->distance_to_code(&codes[0]);
-        ASSERT_FLOAT_EQ(dist1, -4.0);
+        float expected_l2_dist_sq = 8.0; // 16 - number_ones
+        ASSERT_FLOAT_EQ(dist1, std::sqrt(expected_l2_dist_sq));
         
         // For second vector [1,1,1,1,0,0,0,0]:
         // Should give -4.0 (four 1s multiplied by -1)
-        float dist2 = dc->distance_to_code(&codes[1]);
-        ASSERT_FLOAT_EQ(dist2, -4.0);    
+        float dist2 = dc->distance_to_code(&codes[2]); 
+        float expected_l2_dist_sq_2 = 11.0;// 16 - number_ones
+
+        ASSERT_FLOAT_EQ(dist2, std::sqrt(expected_l2_dist_sq_2));    
 }
 
 TEST(FaissIndexBQDirectTest, MultipleQueries) {

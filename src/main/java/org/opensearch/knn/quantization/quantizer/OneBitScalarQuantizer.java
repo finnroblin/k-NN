@@ -108,9 +108,14 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
         // }
 
         for (int i = 0; i < vector.length; i++) {
-            float aboveThreshold = binaryState.getAboveThresholdMeans()[i];
-            float belowThreshold = binaryState.getBelowThresholdMeans()[i];
-            vector[i] = (vector[i] - belowThreshold) / (aboveThreshold - belowThreshold);
+            // float aboveThreshold = binaryState.getAboveThresholdMeans()[i];
+            // float belowThreshold = binaryState.getBelowThresholdMeans()[i];
+            
+   
+            // vector[i] = (vector[i] - belowThreshold) / (aboveThreshold - belowThreshold);
+            // vector[i] = vector[i] >= binaryState.getMeanThresholds()[i] ? 1.0f : 0.0f;
+
+            vector[i] = vector[i] < binaryState.getMeanThresholds()[i] ? 1.0f : 0.0f;
         }
     }
 

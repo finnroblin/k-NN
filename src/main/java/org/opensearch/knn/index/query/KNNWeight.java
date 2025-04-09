@@ -423,13 +423,25 @@ public class KNNWeight extends Weight {
             log.debug("[KNN] Query yielded 0 results");
             return Collections.emptyMap();
         }
+        // make sure score are getting mapped to correct space type on 431
+        // maybe getting scored here? check that the scores are getting called hamming or otherwise.
+        // debugging step. 
+        // confirm on jni layer that a better result is a lower score. expecting faiss to return lower results for better distances.
+        // score in jni where we're calling search.
+        log.info("results: " + results);
 
         if (quantizedVector != null) {
-            return Arrays.stream(results)
-                .collect(Collectors.toMap(KNNQueryResult::getId, result -> knnEngine.score(result.getScore(), SpaceType.HAMMING)));
+
+            Map<Integer, Float> afterRescoreWQuantized = Arrays.stream(results)
+                    .collect(Collectors.toMap(KNNQueryResult::getId, result -> knnEngine.score(result.getScore(), SpaceType.HAMMING)));
+            log.info("after rescore hamming: " + afterRescoreWQuantized);
+            return afterRescoreWQuantized;
         }
-        return Arrays.stream(results)
+        Map<Integer, Float> afterRescore = Arrays.stream(results)
             .collect(Collectors.toMap(KNNQueryResult::getId, result -> knnEngine.score(result.getScore(), spaceType)));
+
+        log.info("after rescore" + afterRescore);
+        return afterRescore;
     }
 
     /**
