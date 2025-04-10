@@ -120,7 +120,7 @@ public class TestUtils {
         for (int i = 0; i < numVectors; i++) {
             float[] vector = new float[dimensions];
             for (int j = 0; j < dimensions; j++) {
-                vector[j] = rand.nextFloat();
+                vector[j] = rand.nextFloat() * 256;
             }
             standardVectors[i] = vector;
         }

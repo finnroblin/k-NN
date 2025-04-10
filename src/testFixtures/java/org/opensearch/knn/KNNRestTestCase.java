@@ -44,12 +44,14 @@ import org.opensearch.knn.index.SpaceType;
 import org.opensearch.knn.index.VectorDataType;
 import org.opensearch.knn.index.codec.backward_codecs.KNN9120Codec.ParentChildHelper;
 import org.opensearch.knn.index.query.KNNQueryBuilder;
+import org.opensearch.knn.index.query.rescore.RescoreContext;
 import org.opensearch.knn.indices.ModelState;
 import org.opensearch.knn.plugin.KNNPlugin;
 import org.opensearch.knn.plugin.script.KNNScoringScriptEngine;
 import org.opensearch.script.Script;
 import org.opensearch.search.SearchService;
 import org.opensearch.search.aggregations.metrics.ScriptedMetricAggregationBuilder;
+
 
 import javax.management.MBeanServerInvocationHandler;
 import javax.management.MalformedObjectNameException;
@@ -1717,6 +1719,7 @@ public class KNNRestTestCase extends ODFERestTestCase {
         List<String> kVectors;
 
         for (int i = 0; i < queryVectors.length; i++) {
+            
             KNNQueryBuilder knnQueryBuilderRecall = new KNNQueryBuilder(testField, queryVectors[i], k);
             Response respRecall = searchKNNIndex(testIndex, knnQueryBuilderRecall, k);
             List<KNNResult> resultsRecall = parseSearchResponse(EntityUtils.toString(respRecall.getEntity()), testField);
@@ -1731,6 +1734,34 @@ public class KNNRestTestCase extends ODFERestTestCase {
 
         return searchResults;
     }
+    public List<List<String>> bulkSearchWithNoRescore(String testIndex, String testField, float[][] queryVectors, int k) throws Exception {
+        List<List<String>> searchResults = new ArrayList<>();
+        List<String> kVectors;
+    
+        for (int i = 0; i < queryVectors.length; i++) {
+            // Create KNNQueryBuilder with rescore disabled using the builder pattern
+            KNNQueryBuilder knnQueryBuilderRecall = KNNQueryBuilder.builder()
+                .fieldName(testField)
+                .vector(queryVectors[i])
+                .k(k)
+                .rescoreContext(RescoreContext.EXPLICITLY_DISABLED_RESCORE_CONTEXT)
+                .build();
+    
+            Response respRecall = searchKNNIndex(testIndex, knnQueryBuilderRecall, k);
+            List<KNNResult> resultsRecall = parseSearchResponse(EntityUtils.toString(respRecall.getEntity()), testField);
+    
+            assertEquals(resultsRecall.size(), k);
+            kVectors = new ArrayList<>();
+            for (KNNResult result : resultsRecall) {
+                kVectors.add(result.getDocId());
+            }
+            searchResults.add(kVectors);
+        }
+    
+        return searchResults;
+    }
+    
+    
 
     // Method that waits till the health of nodes in the cluster goes green
     public void waitForClusterHealthGreen(String numOfNodes) throws IOException {
