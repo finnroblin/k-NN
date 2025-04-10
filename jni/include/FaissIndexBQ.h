@@ -29,9 +29,10 @@ namespace knn_jni {
             CustomerFlatCodesDistanceComputer(const uint8_t* codes, size_t code_size, int d) 
             // : FlatCodesDistanceComputer(codes, code_size), dimension(d), query(nullptr) {
                 : FlatCodesDistanceComputer(codes, 16), dimension(d), query(nullptr) {
-                // this->codes = codes;
-                // this->code_size = code_size;
-                // this->dimension = d;
+                this->codes = codes;
+                this->code_size = 16;
+                this->dimension = d;
+            
             }
 
             virtual float distance_to_code(const uint8_t* code) override {
@@ -99,7 +100,7 @@ namespace knn_jni {
         score += dim_score;
     }
     return score;
-        }
+        };
 
             virtual void set_query(const float* x) override {
                 this->query = x;
@@ -115,35 +116,36 @@ namespace knn_jni {
 
         struct FaissIndexBQ : faiss::IndexFlatCodes {
 
-            FaissIndexBQ(faiss::idx_t d, std::vector<uint8_t> codes) : IndexFlatCodes((d/ 8), d, faiss::METRIC_L2){
+            FaissIndexBQ(faiss::idx_t d, std::vector<uint8_t> codes) : IndexFlatCodes(16, d, faiss::METRIC_L2){
                 std::cout << "FaissIndexBQ constructor called with codes lenght" << codes.size() << "and codes 0\n" << " and d/8 " << d/8 << " and d " << d;
 // //                << codes[0] << "\n";
                 std::cout << "HEREHERHERH\n\n\n\n\n\n\n\n\n";
                 // this->d = d;
                 this->codes = codes;
-                this->code_size = (d/8);
+                // this->code_size = (d/8);
+                this->code_size = 16;
             }
 
             void init(faiss::Index * parent, faiss::Index * grand_parent) {
                 // std::cout << "ehreheragainga\n\n\n\n";
                 this->ntotal = this->codes.size() / (this->d / 8);
-                parent->ntotal = this->ntotal;
+                parent->ntotal = this->ntotal;   
                 grand_parent->ntotal = this->ntotal;
             }
 
             /** a FlatCodesDistanceComputer offers a distance_to_code method */
             faiss::FlatCodesDistanceComputer* get_FlatCodesDistanceComputer() const override {
-            //     std::cout << "number of codes: " << this->codes.size() << "\n\n\n HEREHERHEHEREHRHEHRUIHWEUIFHIU\n\\n\n\n\n\n"; // 4400
-            //    std::cout << "0th code: " << static_cast<int>(this->codes[0]) << "\n";
-            //     std::cout << "ntotal: " << this->ntotal << "\n";
-            //     std::cout << "code sz: " << this->code_size << "\n";
+                std::cout << "number of codes: " << this->codes.size() << "\n\n\n HEREHERHEHEREHRHEHRUIHWEUIFHIU\n\\n\n\n\n\n"; // 4400
+               std::cout << "0th code: " << static_cast<int>(this->codes[0]) << "\n";
+                std::cout << "ntotal: " << this->ntotal << "\n";
+                std::cout << "code sz: " << this->code_size << "\n";
             //    std::cout << this->d << "\n";
 
             //    for (uint8_t code : this->codes) {
             //        std::cout << static_cast<int>(code) << " ";
             //    }
 
-                return new knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer((const uint8_t*) (this->codes.data()), 1, this->d);
+                return new knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer((const uint8_t*) (this->codes.data()), 16, this->d);
             };
 
             // virtual void merge_from(faiss::Index& otherIndex, faiss::idx_t add_id = 0) override {
