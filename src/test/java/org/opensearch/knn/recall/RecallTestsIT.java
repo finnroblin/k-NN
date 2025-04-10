@@ -50,6 +50,7 @@ import static org.opensearch.knn.common.KNNConstants.TYPE_KNN_VECTOR;
 import static org.opensearch.knn.index.KNNSettings.INDEX_KNN_ADVANCED_APPROXIMATE_THRESHOLD;
 import static org.opensearch.knn.index.KNNSettings.KNN_ALGO_PARAM_INDEX_THREAD_QTY;
 import static org.opensearch.knn.index.KNNSettings.KNN_MEMORY_CIRCUIT_BREAKER_ENABLED;
+import static org.opensearch.knn.index.query.parser.RescoreParser.RESCORE_PARAMETER;
 
 /**
  * Tests confirm that for the different supported configurations, recall is sound. The recall thresholds are
@@ -66,8 +67,8 @@ public class RecallTestsIT extends KNNRestTestCase {
     private final static String TRAIN_INDEX_NAME = "train_index";
     private final static String TRAIN_FIELD_NAME = "train_field";
     private final static String TEST_MODEL_ID = "test_model_id";
-    private final static int TEST_DIMENSION = 32;
-    private final static int DOC_COUNT = 1100;
+    private final static int TEST_DIMENSION = 128;
+    private final static int DOC_COUNT = 11000;
     private final static int QUERY_COUNT = 100;
     private final static int TEST_K = 100;
     private final static double PERFECT_RECALL = 1.0;
@@ -120,18 +121,22 @@ public class RecallTestsIT extends KNNRestTestCase {
      *              "m":{HNSW_M},
      *              "ef_construction": {HNSW_EF_CONSTRUCTION},
      *              "ef_search": {HNSW_EF_SEARCH},
-     *              "mode": "on_disk"
+     *              "mode": "on_disk",
+     *             
      *          }
      *       }
      *     }
      *   }
+     *
      * }
+     * Then rescore: false passed to the query. 
      */
     @SneakyThrows
     public void testRecall_whenADCENabled_thenRecallAbove40Percent() {
         // List<SpaceType> spaceTypes = List.of(SpaceType.L2, SpaceType.INNER_PRODUCT, SpaceType.COSINESIMIL);
-        List<SpaceType> spaceTypes = List.of(SpaceType.L2);
+        // List<SpaceType> spaceTypes = List.of(SpaceType.INNER_PRODUCT);
 
+        List<SpaceType> spaceTypes = List.of(SpaceType.L2);
         for (SpaceType spaceType : spaceTypes) {
             String indexName = createIndexName(KNNEngine.FAISS, spaceType);
             XContentBuilder builder = XContentFactory.jsonBuilder()
@@ -148,14 +153,14 @@ public class RecallTestsIT extends KNNRestTestCase {
                 .startObject(PARAMETERS)
                 .field(METHOD_PARAMETER_EF_CONSTRUCTION, HNSW_EF_CONSTRUCTION)
                 .field(METHOD_PARAMETER_M, HNSW_M)
-                .field(METHOD_PARAMETER_EF_SEARCH, 16)
+                .field(METHOD_PARAMETER_EF_SEARCH, 100)
                 .endObject()
                 .endObject()
                 .endObject()
                 .endObject()
                 .endObject();
             createIndexAndIngestDocs(indexName, TEST_FIELD_NAME, getSettings(), builder.toString());
-            assertRecall(indexName, spaceType, 0.6f);
+            assertRecallNoRescore(indexName, spaceType, 0.6f);
         }
     }
 
@@ -476,6 +481,14 @@ public class RecallTestsIT extends KNNRestTestCase {
     @SneakyThrows
     private void assertRecall(String testIndexName, SpaceType spaceType, float acceptableRecallFromPerfect) {
         List<List<String>> searchResults = bulkSearch(testIndexName, TEST_FIELD_NAME, QUERY_VECTORS, TEST_K);
+        double recallValue = TestUtils.calculateRecallValue(searchResults, GROUND_TRUTH.get(spaceType), TEST_K);
+        logger.info("Recall value = {}", recallValue);
+        assertEquals(PERFECT_RECALL, recallValue, acceptableRecallFromPerfect);
+    }
+
+    @SneakyThrows 
+    private void assertRecallNoRescore(String testIndexName, SpaceType spaceType, float acceptableRecallFromPerfect) {
+        List<List<String>> searchResults = bulkSearchWithNoRescore(testIndexName, TEST_FIELD_NAME, QUERY_VECTORS, TEST_K);
         double recallValue = TestUtils.calculateRecallValue(searchResults, GROUND_TRUTH.get(spaceType), TEST_K);
         logger.info("Recall value = {}", recallValue);
         assertEquals(PERFECT_RECALL, recallValue, acceptableRecallFromPerfect);
