@@ -472,14 +472,14 @@ jlong knn_jni::faiss_wrapper::LoadIndexWithStreamADC(faiss::IOReader* ioReader) 
     // Extract the relevant info from the binary index
     faiss::IndexBinary* indexReader = (faiss::IndexBinary*) LoadBinaryIndexWithStream(ioReader);
     faiss::IndexBinaryIDMap * binaryIdMap = (faiss::IndexBinaryIDMap *) indexReader;
-    faiss::IndexBinaryHNSW * hnswBinary = (faiss::IndexBinaryHNSW *)(binaryIdMap->index);
-    faiss::IndexBinaryFlat * codesIndex = (faiss::IndexBinaryFlat *) hnswBinary->storage;
+    faiss::IndexBinaryHNSW * hnswBinary = (faiss::IndexBinaryHNSW *)(binaryIdMap->index); // hnsw index sits on top
+    faiss::IndexBinaryFlat * codesIndex = (faiss::IndexBinaryFlat *) hnswBinary->storage; // since binary storage is binary flat codes
     faiss::HNSW hnsw = hnswBinary->hnsw;
     std::vector<uint8_t> codes = codesIndex->xb;
 
     // Create the new float index
     knn_jni::faiss_wrapper::FaissIndexBQ * alteredStorage = new knn_jni::faiss_wrapper::FaissIndexBQ(indexReader->d, codes);
-    faiss::IndexHNSW * alteredIndexHNSW = new faiss::IndexHNSW(alteredStorage, 16);     //TODO fix M
+    faiss::IndexHNSW * alteredIndexHNSW = new faiss::IndexHNSW(alteredStorage, 32);     //TODO fix M
     alteredIndexHNSW->hnsw = hnswBinary->hnsw;
     faiss::IndexIDMap * alteredIdMap = new faiss::IndexIDMap(alteredIndexHNSW);
     alteredStorage->init(alteredIndexHNSW, alteredIdMap);
@@ -662,6 +662,8 @@ jobjectArray knn_jni::faiss_wrapper::QueryIndex_WithFilter(knn_jni::JNIUtilInter
             }
         }
         try {
+            std::cout << "going through search now, here is the rawQueryvector\n";
+            std::cout << rawQueryvector[0] << "ahahaha\n";
             indexReader->search(1, rawQueryvector, kJ, dis.data(), ids.data(), searchParameters);
         } catch (...) {
             jniUtil->ReleaseFloatArrayElements(env, queryVectorJ, rawQueryvector, JNI_ABORT);

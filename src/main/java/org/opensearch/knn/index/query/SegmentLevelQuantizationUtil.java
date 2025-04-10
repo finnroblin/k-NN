@@ -23,8 +23,8 @@ import java.util.Locale;
 public class SegmentLevelQuantizationUtil {
 
     public static boolean isAdcEnabled(SegmentLevelQuantizationInfo segmentLevelQuantizationInfo) {
-        return true;
-        // return false;
+         return true;
+    //    return false;
         // return segmentLevelQuantizationInfo != null
         // && ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.ONE_BIT)
         // .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier());
@@ -56,7 +56,7 @@ public class SegmentLevelQuantizationUtil {
         }
         final QuantizationService quantizationService = QuantizationService.getInstance();
         quantizationService.transform(segmentLevelQuantizationInfo.getQuantizationState(), vector);
-    }
+     }
 
     /**
      * A utility function to get {@link QuantizationState} for a given segment and field.

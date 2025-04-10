@@ -12,6 +12,8 @@ import org.opensearch.knn.index.query.SegmentLevelQuantizationInfo;
 import org.opensearch.knn.index.query.SegmentLevelQuantizationUtil;
 import org.opensearch.knn.index.vectorvalues.KNNFloatVectorValues;
 
+import lombok.extern.log4j.Log4j2;
+
 import java.io.IOException;
 
 /**
@@ -20,6 +22,7 @@ import java.io.IOException;
  *
  * The class is used in KNNWeight to score all docs, but, it iterates over filterIdsArray if filter is provided
  */
+@Log4j2
 public class VectorIdsKNNIterator implements KNNIterator {
     protected final DocIdSetIterator filterIdsIterator;
     protected final float[] queryVector;
@@ -88,6 +91,7 @@ public class VectorIdsKNNIterator implements KNNIterator {
 
     protected float computeScore() throws IOException {
         final float[] vector = knnFloatVectorValues.getVector();
+        // log.info("ComputeScore called which I think means exact search...");
         if (segmentLevelQuantizationInfo != null) {
             // TODO here
             if (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)) {

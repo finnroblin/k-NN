@@ -27,7 +27,8 @@ namespace knn_jni {
             size_t code_size;
 
             CustomerFlatCodesDistanceComputer(const uint8_t* codes, size_t code_size, int d) 
-            : FlatCodesDistanceComputer(codes, code_size), dimension(d), query(nullptr) {
+            // : FlatCodesDistanceComputer(codes, code_size), dimension(d), query(nullptr) {
+                : FlatCodesDistanceComputer(codes, 16), dimension(d), query(nullptr) {
                 // this->codes = codes;
                 // this->code_size = code_size;
                 // this->dimension = d;
@@ -55,25 +56,50 @@ namespace knn_jni {
                             // << ((codes[i / 8] & (1 << (i % 8))) != 0) << std::endl;
                 // }
                 // std::cout << "called here\n\n\n";
-                float score = 0.0f;
+//                 float score = 0.0f;
 
-                // std::cout << " code: " << static_cast<int>(code[0]);
-                for (int i = 0; i < this->dimension; i++) {
-                    // score += (code[(i / sizeof(uint8_t))] & (1 << (i % sizeof(uint8_t)))) == 0 ? -1 * query[i] * query[i] : -1 * (1- query[i]) * (1-query[i]);
-                    // score += (code[(i / sizeof(uint8_t))] & (1 << (i % sizeof(uint8_t)))) == 0 ? 0 : -1*query[i];
-                    // score += (code[(i / sizeof(uint8_t))] & (1 << (i % sizeof(uint8_t)))) == 0 ? query[i] * query[i] : (1- query[i]) * (1-query[i]);
-                    // float code_val = (code[(i / 8)] & (1 << (i % 8))) ? 1.0f : 0.0f;
-                    // float code_val = (code[(i / 8)] & (1 << (7 - (i % 8)))) ? 1.0f : 0.0f;
-                //    std::cout << ((code[(i / 8)] & (1 << (i % 8))) != 0);
-                //    if (i % 32 == 31) std::cout << "\n";
-                    float code_val = (code[(i / 8)] & (1 << (i % 8))) ? 1.0f : 0.0f;
-                    score += (query[i] - code_val) * (query[i] - code_val);
-                    // score += (code[(i / (8 * sizeof(uint8_t)))] & (1 << (i % (8 * sizeof(uint8_t))))) == 0 ? query[i] * query[i] : (1- query[i]) * (1-query[i]);
-                }
-//                return std::sqrt(score);
-//                std::cout << "score: " << score;
-                return score;
-            }
+//                 // std::cout << " code: " << static_cast<int>(code[0]);
+//                 for (int i = 0; i < this->dimension; i++) {
+//                     // score += (code[(i / sizeof(uint8_t))] & (1 << (i % sizeof(uint8_t)))) == 0 ? -1 * query[i] * query[i] : -1 * (1- query[i]) * (1-query[i]);
+//                     // score += (code[(i / sizeof(uint8_t))] & (1 << (i % sizeof(uint8_t)))) == 0 ? 0 : -1*query[i];
+//                     // score += (code[(i / sizeof(uint8_t))] & (1 << (i % sizeof(uint8_t)))) == 0 ? query[i] * query[i] : (1- query[i]) * (1-query[i]);
+//                     // float code_val = (code[(i / 8)] & (1 << (i % 8))) ? 1.0f : 0.0f;
+//                     // float code_val = (code[(i / 8)] & (1 << (7 - (i % 8)))) ? 1.0f : 0.0f;
+//                 //    std::cout << ((code[(i / 8)] & (1 << (i % 8))) != 0);
+//                 //    if (i % 32 == 31) std::cout << "\n";
+//                     float code_val = (code[(i / 8)] & ((1 << (i % 8)))) ? 1.0f : 0.0f;
+//                     // score += 1 - 2 * (query[i] - code_val);
+//                     // score += (code[(i / 8)] & ((1 << (i % 8)))) == 0 ? (query[i] ) * (query[i]) : (query[i] - 1) * (query[i] - 1);
+//                     score += ((code[(i / 8)] & ((1 << (i % 8)))) >> (i % 8)) == 0 ? 0 : query[i];
+//                     // score += (code[(i / (8 * sizeof(uint8_t)))] & (1 << (i % (8 * sizeof(uint8_t))))) == 0 ? query[i] * query[i] : (1- query[i]) * (1-query[i]);
+//                 }
+// //                return std::sqrt(score);
+// //                std::cout << "score: " << score;
+//                 return score;
+    float score = 0.0f;
+    for (int i = 0; i < dimension; i++) {
+        uint8_t code_block = code[(i / 8)];
+        int bit_offset = i % 8;
+        int bit_mask = 1 << bit_offset;
+        int code_masked = (code_block & bit_mask);
+        int code_translated = code_masked >> bit_offset;
+
+        // want to select the
+        // std::cout << "bit_offset: " << bit_offset << std::endl;
+        // std::cout << "bit_mask: " << bit_mask << std::endl;
+        // std::cout << "code_masked: " << code_masked << std::endl;
+        // std::cout << "code_translated: " << code_translated << std::endl;
+
+        // Inner product
+        // float dim_score = code_translated == 0 ? 0 : -1*query[i];
+
+        // L2
+        float dim_score = (code_translated - query[i]) * (code_translated - query[i]);
+
+        score += dim_score;
+    }
+    return score;
+        }
 
             virtual void set_query(const float* x) override {
                 this->query = x;
@@ -81,20 +107,21 @@ namespace knn_jni {
 
             virtual float symmetric_dis(faiss::idx_t i, faiss::idx_t j) override {
                 std::cout << " in hamming sym dist for some reason...";
+
                 // Just return hamming distance for now...
-            return faiss::hamming<1, float>(&this->codes[i], &this->codes[j]);
+                return faiss::hamming<1, float>(&this->codes[i], &this->codes[j]);
             };
         };
 
         struct FaissIndexBQ : faiss::IndexFlatCodes {
 
-            FaissIndexBQ(faiss::idx_t d, std::vector<uint8_t> codes) : IndexFlatCodes(1, d, faiss::METRIC_L2){
-//                 std::cout << "FaissIndexBQ constructor called with codes lenght" << codes.size() << "and codes 0\n";
+            FaissIndexBQ(faiss::idx_t d, std::vector<uint8_t> codes) : IndexFlatCodes((d/ 8), d, faiss::METRIC_L2){
+                std::cout << "FaissIndexBQ constructor called with codes lenght" << codes.size() << "and codes 0\n" << " and d/8 " << d/8 << " and d " << d;
 // //                << codes[0] << "\n";
-//                 std::cout << "HEREHERHERH\n\n\n\n\n\n\n\n\n";
+                std::cout << "HEREHERHERH\n\n\n\n\n\n\n\n\n";
                 // this->d = d;
                 this->codes = codes;
-                // this->code_size = 1;
+                this->code_size = (d/8);
             }
 
             void init(faiss::Index * parent, faiss::Index * grand_parent) {
@@ -119,19 +146,20 @@ namespace knn_jni {
                 return new knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer((const uint8_t*) (this->codes.data()), 1, this->d);
             };
 
-            virtual void merge_from(faiss::Index& otherIndex, faiss::idx_t add_id = 0) override {
-                IndexFlatCodes::merge_from(otherIndex, add_id);
-            };
+            // virtual void merge_from(faiss::Index& otherIndex, faiss::idx_t add_id = 0) override {
+            //     IndexFlatCodes::merge_from(otherIndex, add_id);
+            // };
 
-            virtual void search(
-                    faiss::idx_t n,
-                    const float* x,
-                    faiss::idx_t k,
-                    float* distances,
-                    faiss::idx_t* labels,
-                    const faiss::SearchParameters* params = nullptr) const override {
-                        IndexFlatCodes::search(n,x,k,distances,labels,params);
-                    };
+            // virtual void search(
+            //         faiss::idx_t n,
+            //         const float* x,
+            //         faiss::idx_t k,
+            //         float* distances,
+            //         faiss::idx_t* labels,
+            //         const faiss::SearchParameters* params = nullptr) const override {};
+                    // {
+                    //     IndexFlatCodes::search(n,x,k,distances,labels,params);
+                    // };
         };
     }
 }

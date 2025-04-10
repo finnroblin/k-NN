@@ -168,7 +168,7 @@ public class JNIService {
     ) {
         if (KNNEngine.FAISS == knnEngine) {
             if (IndexUtil.isBinaryIndex(knnEngine, parameters)) {
-                FaissService.createBinaryIndexFromTemplate(ids, vectorsAddress, dim, output, templateIndex, parameters);
+            FaissService.createBinaryIndexFromTemplate(ids, vectorsAddress, dim, output, templateIndex, parameters);
                 return;
             }
             if (IndexUtil.isByteIndex(parameters)) {

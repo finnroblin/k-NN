@@ -320,6 +320,7 @@ public class KNNWeight extends Weight {
         if (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)) {
             SegmentLevelQuantizationUtil.transformVector(knnQuery.getQueryVector(), segmentLevelQuantizationInfo);
         } else {
+
             quantizedVector = SegmentLevelQuantizationUtil.quantizeVector(knnQuery.getQueryVector(), segmentLevelQuantizationInfo);
         }
 
@@ -374,7 +375,8 @@ public class KNNWeight extends Weight {
             }
             int[] parentIds = getParentIdsArray(context);
             if (k > 0) {
-                if (knnQuery.getVectorDataType() == VectorDataType.BINARY
+                if (
+                        knnQuery.getVectorDataType() == VectorDataType.BINARY
                     || quantizedVector != null && quantizationService.getVectorDataTypeForTransfer(fieldInfo) == VectorDataType.BINARY) {
                     results = JNIService.queryBinaryIndex(
                         indexAllocation.getMemoryAddress(),
@@ -391,6 +393,7 @@ public class KNNWeight extends Weight {
                     results = JNIService.queryIndex(
                         indexAllocation.getMemoryAddress(),
                         knnQuery.getQueryVector(),
+//                        quantizedVector,
                         k,
                         knnQuery.getMethodParameters(),
                         knnEngine,

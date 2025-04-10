@@ -161,6 +161,32 @@ TEST(FaissCreateIndexTest, BasicAssertions) {
                            insertions);
 }
 
+TEST(FaissIndexBQTest, BaselineCheck) {
+    int dim = 8;
+    uint8_t * code = new uint8_t[dim / sizeof(uint8_t)];
+    code[0] = 3;
+    std::vector query = {100.0f, 200.0f, 300.0f, 400.0f, 500.0f, 600.0f, 700.0f, 800.0f};
+
+    float score = 0.0f;
+    for (int i = 0; i < dim; i++) {
+        uint8_t code_block = code[(i / 8)];
+        int bit_offset = i % 8;
+        int bit_mask = 1 << bit_offset;
+        int code_masked = (code_block & bit_mask);
+        int code_translated = code_masked >> bit_offset;
+
+        // want to select the
+        // std::cout << "bit_offset: " << bit_offset << std::endl;
+        // std::cout << "bit_mask: " << bit_mask << std::endl;
+        // std::cout << "code_masked: " << code_masked << std::endl;
+        // std::cout << "code_translated: " << code_translated << std::endl;
+        score += code_translated == 0 ? 0 : -1*query[i];;
+    }
+
+    // Id expect the score to be 0
+    std::cout << "score: " << score << std::endl;
+}
+
 TEST(FaissIndexBQTest, ComprehensiveTest) {
     // Test 1: Basic Constructor and Initialization
     int dim = 16;
