@@ -96,7 +96,7 @@ public class VectorIdsKNNIterator implements KNNIterator {
         /*
         * do some more investigation for rescoring... 
         rescore on -> computeScore called, should hit else block. 
-            * add
+            * add 
             * filter and for exact search (threshold is low, doesn't build graph strucutre), we do exact search on the index.
             efficient filtering -- serach idx w filter, if hnsw level is super sparse then do an exact search.
 
@@ -121,7 +121,14 @@ public class VectorIdsKNNIterator implements KNNIterator {
         }
         // Calculates a similarity score between the two vectors with a specified function. Higher similarity
         // scores correspond to closer vectors.
+        // note: the query vector is not transformed here if using adc, which I think is expected.
         return spaceType.getKnnVectorSimilarityFunction().compare(queryVector, vector);
+//        double distance = 0.0f;
+//        for (int i = 0; i < vector.length; i++) {
+//            // TODO: This only makes sense for l2
+//            distance += Math.pow(vector[i] - queryVector[i], 2);
+//        }
+//        return (float) distance;
         // log.info("just doing the vector calc again" + vector[0] + " .  " + vector[1]);
         
         
