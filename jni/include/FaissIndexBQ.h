@@ -80,7 +80,7 @@ namespace knn_jni {
     float score = 0.0f;
     for (int i = 0; i < dimension; i++) {
         uint8_t code_block = code[(i / 8)];
-        int bit_offset = i % 8;
+        int bit_offset = 7 - (i % 8);
         int bit_mask = 1 << bit_offset;
         int code_masked = (code_block & bit_mask);
         int code_translated = code_masked >> bit_offset;

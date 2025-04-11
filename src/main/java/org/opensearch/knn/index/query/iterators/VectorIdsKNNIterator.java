@@ -91,10 +91,21 @@ public class VectorIdsKNNIterator implements KNNIterator {
 
     protected float computeScore() throws IOException {
         final float[] vector = knnFloatVectorValues.getVector();
-        // log.info("ComputeScore called which I think means exact search...");
+        log.info("ComputeScore called which I think means exact search...");
+
+        /*
+        * do some more investigation for rescoring... 
+        rescore on -> computeScore called, should hit else block. 
+            * add
+            * filter and for exact search (threshold is low, doesn't build graph strucutre), we do exact search on the index.
+            efficient filtering -- serach idx w filter, if hnsw level is super sparse then do an exact search.
+
+            faiss will return hamming distance codes, for SEGMENT CONSISTENCY we need to use exact search on HAMMING 
+        */        
         if (segmentLevelQuantizationInfo != null) {
             // TODO here
             if (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)) {
+                log.info("ComptueScore called w vector at position 0: " + vector[0] + " and queryvector at pos 0: " + queryVector[0]);
                 double distance = 0.0f;
                 for (int i = 0; i < vector.length; i++) {
                     // TODO: This only makes sense for l2
@@ -102,12 +113,25 @@ public class VectorIdsKNNIterator implements KNNIterator {
                 }
                 return (float) distance;
             }
+            // redo the hamming so that we can stay consistent w the faiss scores.
             byte[] quantizedVector = SegmentLevelQuantizationUtil.quantizeVector(vector, segmentLevelQuantizationInfo);
             return SpaceType.HAMMING.getKnnVectorSimilarityFunction().compare(quantizedQueryVector, quantizedVector);
+        } else {
+            log.info("nothing happened for some reason...");
         }
         // Calculates a similarity score between the two vectors with a specified function. Higher similarity
         // scores correspond to closer vectors.
         return spaceType.getKnnVectorSimilarityFunction().compare(queryVector, vector);
+        // log.info("just doing the vector calc again" + vector[0] + " .  " + vector[1]);
+        
+        
+        // double distance = 0.0f;
+        // for (int i = 0; i < vector.length; i++) {
+        //         // TODO: This only makes sense for l2
+        //         distance += Math.pow(vector[i] - queryVector[i], 2);
+        // }
+        // return (float) distance;
+        
     }
 
     protected int getNextDocId() throws IOException {

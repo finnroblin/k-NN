@@ -474,7 +474,7 @@ jlong knn_jni::faiss_wrapper::LoadIndexWithStreamADC(faiss::IOReader* ioReader) 
     faiss::IndexBinaryIDMap * binaryIdMap = (faiss::IndexBinaryIDMap *) indexReader;
     faiss::IndexBinaryHNSW * hnswBinary = (faiss::IndexBinaryHNSW *)(binaryIdMap->index); // hnsw index sits on top
     faiss::IndexBinaryFlat * codesIndex = (faiss::IndexBinaryFlat *) hnswBinary->storage; // since binary storage is binary flat codes
-    faiss::HNSW hnsw = hnswBinary->hnsw;
+    // faiss::HNSW hnsw = hnswBinary->hnsw;
     std::vector<uint8_t> codes = codesIndex->xb;
 
     // Create the new float index

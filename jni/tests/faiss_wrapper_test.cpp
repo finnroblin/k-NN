@@ -20,6 +20,8 @@
 #include "faiss/IndexHNSW.h"
 #include "faiss/IndexIVFPQ.h"
 #include "FaissIndexBQ.h"
+#include "faiss/IndexBinaryFlat.h"
+#include "faiss/IndexBinaryHNSW.h"
 #include "mocks/faiss_index_service_mock.h"
 #include "native_stream_support_util.h"
 
@@ -289,6 +291,448 @@ TEST(FaissIndexBQTest, ComprehensiveTest) {
     index.merge_from(parent);  // Should do nothing but not crash
 }
 
+TEST(FaissIndexBQTest, Debug) {
+    const int dim = 128;
+    const int numVectors = 1000;
+    const int numQueries = 100;
+    const int k = 100;
+    
+    // HNSW parameters (similar to Java test)
+    const int hnswM = 16;
+    const int efConstruction = 100;
+    const int efSearch = k;
+    
+    // Step 1: Create test vectors
+    std::cout << "Generating test data..." << std::endl;
+    std::vector<int8_t> originalVectors = test_util::RandomByteVectors(dim, numVectors, -127, 127);
+    std::vector<faiss::idx_t> ids = test_util::Range(numVectors);
+    
+    // Step 2: Quantize vectors to binary (simulating binary storage)
+    std::cout << "Quantizing vectors..." << std::endl;
+    std::vector<uint8_t> binaryVectors(numVectors * ((dim + 7) / 8), 0);
+    for (int i = 0; i < numVectors; i++) {
+        for (int d = 0; d < dim; d++) {
+            int bytePos = (i * ((dim + 7) / 8)) + (d / 8);
+            int bitPos = d % 8;
+            if (originalVectors[i * dim + d] > 0) {
+                binaryVectors[bytePos] |= (1 << bitPos);
+            }
+        }
+    }
+    
+    // Step 3: Calculate ADC statistics
+    std::cout << "Computing dimension statistics..." << std::endl;
+    auto stats = test_util::ComputeDimensionStats(
+        originalVectors, binaryVectors, dim, numVectors);
+    
+    // Step 4: Create a binary HNSW index (simulating the on-disk binary index)
+    std::cout << "Creating binary HNSW index..." << std::endl;
+    std::string method = "BHNSW32";
+    std::unique_ptr<faiss::IndexBinary> binaryIndex(
+        test_util::FaissCreateBinaryIndex(dim, method));
+    
+    // Configure binary index parameters
+    if (auto* hnswIndex = dynamic_cast<faiss::IndexBinaryHNSW*>(binaryIndex.get())) {
+        hnswIndex->hnsw.efConstruction = efConstruction;
+        hnswIndex->hnsw.efSearch = efSearch;
+    }
+    
+    // Step 5: Add vectors to binary index and prepare
+    std::cout << "Adding vectors to index..." << std::endl;
+    auto indexWithData = test_util::FaissAddBinaryData(binaryIndex.get(), ids, binaryVectors);
+    
+    // Step 6: Create FaissIndexBQ with the binary codes (simulating ADC conversion)
+    std::cout << "Creating FaissIndexBQ for ADC querying..." << std::endl;
+    auto* binaryIdMap = dynamic_cast<faiss::IndexBinaryIDMap*>(&indexWithData);
+    ASSERT_NE(binaryIdMap, nullptr);
+    auto* hnswBinary = dynamic_cast<faiss::IndexBinaryHNSW*>(binaryIdMap->index);
+    ASSERT_NE(hnswBinary, nullptr);
+    auto* codesIndex = dynamic_cast<faiss::IndexBinaryFlat*>(hnswBinary->storage);
+    ASSERT_NE(codesIndex, nullptr);
+    
+    knn_jni::faiss_wrapper::FaissIndexBQ bqIndex(dim, codesIndex->xb);
+    faiss::IndexHNSW alteredIndexHNSW(&bqIndex, hnswM);
+    alteredIndexHNSW.hnsw = hnswBinary->hnsw;
+    faiss::IndexIDMap alteredIdMap(&alteredIndexHNSW);
+    bqIndex.init(&alteredIndexHNSW, &alteredIdMap);
+    alteredIdMap.id_map = binaryIdMap->id_map;
+    
+    // Step 7: Compute ground truth
+    std::cout << "Computing ground truth..." << std::endl;
+    std::vector<std::vector<int>> groundTruth;
+    {
+        // Create a flat index for exact search
+        faiss::IndexFlatL2 flatIndex(dim);
+        std::vector<float> floatVectors(numVectors * dim);
+        for (int i = 0; i < numVectors; i++) {
+            for (int j = 0; j < dim; j++) {
+                floatVectors[i * dim + j] = static_cast<float>(originalVectors[i * dim + j]);
+            }
+        }
+        flatIndex.add(numVectors, floatVectors.data());
+        
+        // Search for ground truth
+        for (int i = 0; i < numQueries; i++) {
+            int queryIdx = test_util::RandomInt(0, numVectors - 1);
+            std::vector<float> query(dim);
+            for (int j = 0; j < dim; j++) {
+                query[j] = static_cast<float>(originalVectors[queryIdx * dim + j]);
+            }
+            
+            std::vector<float> distances(k);
+            std::vector<faiss::idx_t> indices(k);
+            flatIndex.search(1, query.data(), k, distances.data(), indices.data());
+            
+            groundTruth.push_back(std::vector<int>(indices.begin(), indices.end()));
+        }
+    }
+    
+    // Step 8: Test recall with ADC
+    std::cout << "Testing ADC recall..." << std::endl;
+    int correctResults = 0;
+    int totalResults = 0;
+    
+    for (int i = 0; i < numQueries; i++) {
+        // Select random vector as query
+        int queryIdx = test_util::RandomInt(0, numVectors - 1);
+        std::vector<float> query(dim);
+        for (int j = 0; j < dim; j++) {
+            query[j] = static_cast<float>(originalVectors[queryIdx * dim + j]);
+        }
+        
+        // Transform query using ADC
+        auto transformedQuery = test_util::TransformQueryADC(query, stats);
+        
+        // Get distance computer and set query
+        auto dc = std::unique_ptr<knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer>(
+            dynamic_cast<knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer*>(
+                bqIndex.get_FlatCodesDistanceComputer()));
+        ASSERT_NE(dc.get(), nullptr);
+        dc->set_query(transformedQuery.data());
+        
+        // Search all vectors
+        std::vector<std::pair<float, int>> results;
+        for (int j = 0; j < numVectors; j++) {
+            float dist = dc->distance_to_code(&binaryVectors[j * ((dim + 7) / 8)]);
+            results.push_back({dist, j});
+        }
+        
+        // Sort by distance
+        std::sort(results.begin(), results.end());
+        
+        // Calculate recall@k
+        std::unordered_set<int> groundTruthSet(groundTruth[i].begin(), groundTruth[i].end());
+        int found = 0;
+        for (int j = 0; j < k && j < results.size(); j++) {
+            if (groundTruthSet.count(results[j].second) > 0) {
+                found++;
+            }
+        }
+        
+        correctResults += found;
+        totalResults += k;
+    }
+    
+    // Calculate and report overall recall
+    float recall = static_cast<float>(correctResults) / totalResults;
+    std::cout << "ADC Recall@" << k << ": " << recall << std::endl;
+    
+    // Expect recall to be at least 60% (as in the Java test)
+    ASSERT_GE(recall, 0.6) << "ADC recall is too low, expected at least 0.6 but got " << recall;
+}
+
+TEST(FaissIndexBQTest, Debug2) {
+
+      const int seed = 42; // Fixed seed for consistent results
+    
+    faiss::RandomGenerator frng = faiss::RandomGenerator(seed);
+    std::uniform_real_distribution<float> distLarge(-100.0f, 100.0f);
+    std::uniform_real_distribution<float> distSmall(-20.0f, 20.0f);
+    
+    // Test parameters remain the same
+    const int dim = 128;
+    const int numVectors = 1000;
+    const int numQueries = 50;
+    const int k = 100;
+    const int hnswM = 16;
+    const int efConstruction = 100;
+    const int efSearch = k;
+    
+    std::cout << "\n=== DEBUG: Initializing ADC test with seed " << seed << " ===" << std::endl;
+    
+    // Step 1: Create vectors with cluster structure using seeded RNG
+    int numClusters = 10;
+    std::vector<int8_t> originalVectors(numVectors * dim);
+    std::vector<int> clusterAssignments(numVectors);
+    
+    // Create cluster centers with seeded randomness
+    std::vector<std::vector<float>> clusterCenters;
+    for (int c = 0; c < numClusters; c++) {
+        std::vector<float> center(dim);
+        for (int d = 0; d < dim; d++) {
+            center[d] = distLarge(frng.mt);  // Replace RandomFloat
+        }
+        clusterCenters.push_back(center);
+    }
+    
+    // Generate vectors around cluster centers with seeded randomness
+    for (int i = 0; i < numVectors; i++) {
+        int cluster = i % numClusters;
+        clusterAssignments[i] = cluster;
+        
+        for (int d = 0; d < dim; d++) {
+            float value = clusterCenters[cluster][d] + distSmall(frng.mt);  // Replace RandomFloat
+            originalVectors[i * dim + d] = static_cast<int8_t>(std::max(-127.0f, std::min(127.0f, value)));
+        }
+    }
+    std::vector<faiss::idx_t> ids = test_util::Range(numVectors);
+    
+    // Step 2: Quantize vectors to binary (1 bit per dimension)
+    std::cout << "=== DEBUG: Quantizing vectors to binary ===" << std::endl;
+    std::vector<uint8_t> binaryVectors(numVectors * ((dim + 7) / 8), 0);
+    int totalBitsSet = 0;
+    for (int i = 0; i < numVectors; i++) {
+        for (int d = 0; d < dim; d++) {
+            int bytePos = (i * ((dim + 7) / 8)) + (d / 8);
+            int bitPos = d % 8;
+            if (originalVectors[i * dim + d] > 0) {
+                binaryVectors[bytePos] |= (1 << bitPos);
+                totalBitsSet++;
+            }
+        }
+    }
+    float percentBitsSet = (float)totalBitsSet / (numVectors * dim) * 100;
+    std::cout << "Binary quantization: " << percentBitsSet << "% of bits set to 1" << std::endl;
+    
+    // Step 3: Calculate ADC statistics
+    auto stats = test_util::ComputeDimensionStats(
+        originalVectors, binaryVectors, dim, numVectors);
+    
+    // Print sample statistics
+    for (int d = 0; d < 5; d++) {
+        std::cout << "Dim " << d << ": Zero mean=" << stats.zero_means[d] 
+                    << ", One mean=" << stats.one_means[d] 
+                    << ", Mean diff=" << (stats.one_means[d]-stats.zero_means[d]) << std::endl;
+    }
+    
+    // Step 4: Create a binary index and save it
+    std::cout << "=== DEBUG: Creating and saving binary HNSW index ===" << std::endl;
+    std::string indexPath = test_util::RandomString(10, "tmp/", ".faiss");
+    
+    std::string method = "BHNSW32";
+    std::unique_ptr<faiss::IndexBinary> binaryIndex(
+        test_util::FaissCreateBinaryIndex(dim, method));
+    
+    // Configure binary index
+    if (auto* hnswIndex = dynamic_cast<faiss::IndexBinaryHNSW*>(binaryIndex.get())) {
+        hnswIndex->hnsw.efConstruction = efConstruction;
+        hnswIndex->hnsw.efSearch = efSearch;
+        hnswIndex->hnsw.rng = frng;
+    }
+    
+    // Add vectors to index and save
+    auto indexWithData = test_util::FaissAddBinaryData(binaryIndex.get(), ids, binaryVectors);
+    test_util::FaissWriteBinaryIndex(&indexWithData, indexPath);
+    
+    // Step 5: Load binary index and convert to ADC index
+    std::cout << "=== DEBUG: Loading binary index and converting to ADC index ===" << std::endl;
+    
+    // This mimics the LoadIndexWithStreamADC method exactly
+    std::unique_ptr<faiss::IndexBinary> loadedBinaryIndex(
+        test_util::FaissLoadBinaryIndex(indexPath));
+    
+    auto* binaryIdMap = dynamic_cast<faiss::IndexBinaryIDMap*>(loadedBinaryIndex.get());
+    ASSERT_NE(binaryIdMap, nullptr);
+    auto* hnswBinary = dynamic_cast<faiss::IndexBinaryHNSW*>(binaryIdMap->index);
+    ASSERT_NE(hnswBinary, nullptr);
+    auto* codesIndex = dynamic_cast<faiss::IndexBinaryFlat*>(hnswBinary->storage);
+    ASSERT_NE(codesIndex, nullptr);
+    
+    std::vector<uint8_t> codes = codesIndex->xb;
+    
+    // Create the ADC index using the same approach as LoadIndexWithStreamADC
+    knn_jni::faiss_wrapper::FaissIndexBQ* alteredStorage = new knn_jni::faiss_wrapper::FaissIndexBQ(dim, codes);
+    faiss::IndexHNSW* alteredIndexHNSW = new faiss::IndexHNSW(alteredStorage, hnswM);
+    alteredIndexHNSW->hnsw = hnswBinary->hnsw;
+    faiss::IndexIDMap* alteredIdMap = new faiss::IndexIDMap(alteredIndexHNSW);
+    alteredStorage->init(alteredIndexHNSW, alteredIdMap);
+    alteredIdMap->id_map = binaryIdMap->id_map;
+    
+    // Store the ADC index (this is what LoadIndexWithStreamADC returns)
+    std::unique_ptr<faiss::Index> adcIndex(alteredIdMap);
+
+    std::cout << "ADC index created with " << adcIndex->ntotal << " vectors" << std::endl;
+    
+    // Step 6: Compute ground truth
+    std::cout << "=== DEBUG: Computing ground truth ===" << std::endl;
+    std::vector<std::vector<faiss::idx_t>> groundTruth(numQueries);
+    std::vector<int> queryIndices(numQueries);
+    
+    {
+        // Create a flat index for exact search
+        faiss::IndexFlatL2 flatIndex(dim);
+        std::vector<float> floatVectors(numVectors * dim);
+        for (int i = 0; i < numVectors; i++) {
+            for (int j = 0; j < dim; j++) {
+                floatVectors[i * dim + j] = static_cast<float>(originalVectors[i * dim + j]);
+            }
+        }
+        flatIndex.add(numVectors, floatVectors.data());
+        
+        // Select queries from different clusters
+        for (int i = 0; i < numQueries; i++) {
+            int cluster = i % numClusters;
+            int clusterSize = numVectors / numClusters;
+            int queryIdx = cluster * clusterSize + (i / numClusters) % clusterSize;
+            queryIndices[i] = queryIdx;
+            
+            std::vector<float> query(dim);
+            for (int j = 0; j < dim; j++) {
+                query[j] = static_cast<float>(originalVectors[queryIdx * dim + j]);
+            }
+            
+            std::vector<float> distances(k);
+            groundTruth[i].resize(k); 
+           flatIndex.search(1, query.data(), k, distances.data(), groundTruth[i].data());
+        }
+    }
+    
+    // Step 7: Test ADC recall using FAISS search
+    std::cout << "=== DEBUG: Testing ADC recall with FAISS search ===" << std::endl;
+    int correctResults = 0;
+    int totalResults = 0;
+    
+    // Set HNSW search parameters
+    faiss::SearchParameters searchParams;
+    alteredIndexHNSW->hnsw.efSearch = efSearch;
+    alteredIndexHNSW->hnsw.efConstruction = 100;
+    
+    for (int i = 0; i < numQueries; i++) {
+        // Get query vector
+        int queryIdx = queryIndices[i];
+        std::vector<float> query(dim);
+        for (int j = 0; j < dim; j++) {
+            query[j] = static_cast<float>(originalVectors[queryIdx * dim + j]);
+        }
+        
+        // Transform query using ADC
+        auto transformedQuery = test_util::TransformQueryADC(query, stats);
+        
+        // Debug - verify query transformation
+        if (i == 0) {
+            std::cout << "Original query sample: ";
+            for (int j = 0; j < 5; j++) {
+                std::cout << query[j] << ", ";
+            }
+            std::cout << "\nTransformed query sample: ";
+            for (int j = 0; j < 5; j++) {
+                std::cout << transformedQuery[j] << ", ";
+            }
+            std::cout << std::endl;
+        }
+
+        std::cout << "after call\n";
+        
+        // Use FAISS search with the transformed query
+        std::vector<float> distances(k);
+        std::vector<faiss::idx_t> indices(k);
+        adcIndex->search(1, transformedQuery.data(), k, distances.data(), indices.data(), nullptr);
+        
+        // Debug output for first query
+        if (i == 0) {
+            std::cout << "Query results - Top 5: ";
+            for (int j = 0; j < 5; j++) {
+                std::cout << indices[j] << " (" << distances[j] << "), ";
+            }
+            std::cout << "\nGround truth - Top 5: ";
+            for (int j = 0; j < 5; j++) {
+                std::cout << groundTruth[i][j] << ", ";
+            }
+            std::cout << std::endl;
+        }
+        
+        // Calculate recall
+        std::unordered_set<faiss::idx_t> groundTruthSet(
+            groundTruth[i].begin(), groundTruth[i].end());
+        int found = 0;
+        for (int j = 0; j < k; j++) {
+            if (groundTruthSet.count(indices[j]) > 0) {
+                found++;
+            }
+        }
+        
+        correctResults += found;
+        totalResults += k;
+    }
+
+    // Quick code to analyze distance correlation
+    std::cout << "\n=== Distance Correlation Analysis ===" << std::endl;
+    int sampleQueryIdx = queryIndices[0];
+    std::vector<float> query(dim);
+    for (int j = 0; j < dim; j++) {
+        query[j] = static_cast<float>(originalVectors[sampleQueryIdx * dim + j]);
+    }
+    auto transformedQuery = test_util::TransformQueryADC(query, stats);
+    auto dc = static_cast<knn_jni::faiss_wrapper::FaissIndexBQ*>(
+        static_cast<faiss::IndexHNSW*>(
+            static_cast<faiss::IndexIDMap*>(adcIndex.get())->index
+        )->storage)->get_FlatCodesDistanceComputer();
+        dc->set_query(transformedQuery.data());
+    // Calculate distances to a sample of vectors
+    std::vector<std::pair<float, float>> distancePairs;
+    for (int i = 0; i < std::min(100, numVectors); i++) {
+        // Calculate L2 distance on original vectors
+        std::vector<float> vec(dim);
+        for (int j = 0; j < dim; j++) {
+            vec[j] = static_cast<float>(originalVectors[i * dim + j]);
+        }
+        
+        float l2Dist = 0;
+        for (int j = 0; j < dim; j++) {
+            float diff = query[j] - vec[j];
+            l2Dist += diff * diff;
+        }
+        
+        // Calculate ADC distance
+        float adcDist = dc->distance_to_code(
+            static_cast<uint8_t*>(&alteredStorage->codes[i * alteredStorage->code_size])
+        );
+        
+        distancePairs.push_back({l2Dist, adcDist});
+    }
+
+    // Sort by L2 distance
+    std::sort(distancePairs.begin(), distancePairs.end());
+
+    // Check if ADC distances are monotonically increasing
+    int inversions = 0;
+    float prevAdc = distancePairs[0].second;
+    for (size_t i = 1; i < distancePairs.size(); i++) {
+        float currAdc = distancePairs[i].second;
+        if (currAdc < prevAdc) inversions++;
+        prevAdc = currAdc;
+    }
+
+    float inversionRate = (float)inversions / (distancePairs.size() - 1);
+    std::cout << "Inversion rate: " << inversionRate << " (" << inversions 
+            << "/" << (distancePairs.size() - 1) << ")" << std::endl;
+
+    // Print sample of the distance pairs
+    std::cout << "Sample of distance pairs (L2, ADC):" << std::endl;
+    for (int i = 0; i < std::min(10, (int)distancePairs.size()); i++) {
+        std::cout << distancePairs[i].first << ", " << distancePairs[i].second << std::endl;
+    }
+    
+    // Calculate recall
+    float recall = static_cast<float>(correctResults) / totalResults;
+    std::cout << "\n=== RESULTS ===\nADC Recall@" << k << ": " << recall << std::endl;
+    
+    // Lower expected recall threshold to account for extreme quantization
+    ASSERT_GE(recall, 0.2) << "ADC recall is too low: " << recall;
+
+    // now rerun with the same query vectors as used for adc, but have them quantized instead.
+    
+}
 
 
 TEST(FaissCreateBinaryIndexTest, BasicAssertions) {
