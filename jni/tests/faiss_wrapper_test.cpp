@@ -188,6 +188,77 @@ TEST(FaissIndexBQTest, BaselineCheck) {
     // Id expect the score to be 0
     std::cout << "score: " << score << std::endl;
 }
+TEST(FaissIndexBQTest, InnerProductDistanceComputerTest) {
+    int dim = 24;
+
+    // Create a query vector in floats with random seed (use std::mt with a reproducible seed)
+    std::mt19937 rng(42);  // Fixed seed for reproducibility
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+    
+    std::vector<float> query(dim);
+    for (int i = 0; i < dim; i++) {
+        query[i] = dist(rng);
+    }
+
+    // Create a set of 10 indexed vectors as floats
+    const int numVectors = 10;
+    std::vector<float> indexedVectors(numVectors * dim);
+    for (int i = 0; i < numVectors * dim; i++) {
+        indexedVectors[i] = dist(rng);
+    }
+
+    // Compute the ground truth distances of the indexed vectors
+    std::vector<float> groundTruthDistances(numVectors);
+    for (int i = 0; i < numVectors; i++) {
+        float distance = 0;
+        for (int j = 0; j < dim; j++) {
+            if (indexedVectors[i * dim + j] > 0) {
+                // For binary quantization, each set bit contributes -query[j]
+                distance += -query[j];
+            }
+        }
+        groundTruthDistances[i] = distance;
+    }
+
+    // Quantize the float vectors and translate them to a code array
+    int code_size = (dim + 7) / 8;  // Number of bytes needed
+    std::vector<uint8_t> codes(numVectors * code_size, 0);
+    
+    for (int i = 0; i < numVectors; i++) {
+        for (int j = 0; j < dim; j++) {
+            if (indexedVectors[i * dim + j] > 0) {
+                // Set the bit to 1 if the value is positive
+                int byte_pos = i * code_size + (j / 8);
+                int bit_pos = 7 - (j % 8);
+                codes[byte_pos] |= (1 << bit_pos);
+            }
+        }
+    }
+
+    // Create FaissIndexBQ with the binary codes
+    knn_jni::faiss_wrapper::FaissIndexBQ bqIndex(dim, codes);
+    
+    // Create distance computer and set query
+    auto dc = std::unique_ptr<knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer>(
+        dynamic_cast<knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer*>(
+            bqIndex.get_FlatCodesDistanceComputer()));
+    
+    ASSERT_NE(dc.get(), nullptr);
+    dc->set_query(query.data());
+    
+    // Query the distance for each code and compare with ground truth
+    for (int i = 0; i < numVectors; i++) {
+        // Get distance using the distance computer
+        float distance = dc->distance_to_code_IP(&codes[i * code_size]);
+        
+        // Assert that distances are the same as computed ground truth
+        ASSERT_NEAR(groundTruthDistances[i], distance, 1e-5) 
+            << "Distance mismatch for vector " << i 
+            << ": expected " << groundTruthDistances[i] 
+            << ", got " << distance;
+    }
+}
+
 
 TEST(FaissIndexBQTest, ComprehensiveTest) {
     // Test 1: Basic Constructor and Initialization

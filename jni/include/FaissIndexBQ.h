@@ -18,6 +18,7 @@
 #include "faiss/utils/hamming_distance/hamdis-inl.h"
 #include <vector>
 #include <iostream>
+#include <format>
 
 namespace knn_jni {
     namespace faiss_wrapper {
@@ -25,15 +26,70 @@ namespace knn_jni {
             const float* query;
             int dimension;
             size_t code_size;
+            faiss::MetricType metric_type;
 
-            CustomerFlatCodesDistanceComputer(const uint8_t* codes, size_t code_size, int d) 
+            CustomerFlatCodesDistanceComputer(const uint8_t* codes, size_t code_size, int d, 
+                faiss::MetricType metric_type = faiss::METRIC_L2) 
             // : FlatCodesDistanceComputer(codes, code_size), dimension(d), query(nullptr) {
-                : FlatCodesDistanceComputer(codes, 16), dimension(d), query(nullptr) {
+                : FlatCodesDistanceComputer(codes, code_size), dimension(d), query(nullptr), metric_type(metric_type) {
                 this->codes = codes;
-                this->code_size = 16;
+                this->code_size = code_size;
                 this->dimension = d;
-            
             }
+
+            float distance_to_code_l2(const uint8_t* code) {
+                 // L2 distance
+                float score = 0.0f;
+                for (int i = 0; i < dimension; i++) {
+                    uint8_t code_block = code[(i / 8)];
+                    int bit_offset = 7 - (i % 8);
+                    int bit_mask = 1 << bit_offset;
+                    int code_masked = (code_block & bit_mask);
+                    int code_translated = code_masked >> bit_offset;
+
+                    // want to select the
+                    // std::cout << "bit_offset: " << bit_offset << std::endl;
+                    // std::cout << "bit_mask: " << bit_mask << std::endl;
+                    // std::cout << "code_masked: " << code_masked << std::endl;
+                    // std::cout << "code_translated: " << code_translated << std::endl;
+
+                    // Inner product
+                    // float dim_score = code_translated == 0 ? 0 : -1*query[i];
+
+                    // L2
+                    float dim_score = (code_translated - query[i]) * (code_translated - query[i]);
+
+                    score += dim_score;
+                }
+                return score;
+                    
+            }
+            float distance_to_code_IP(const uint8_t* code) {
+                // Inner product distance
+                float score = 0.0f;
+                for (int i = 0; i < dimension; i++) {
+                    uint8_t code_block = code[(i / 8)];
+                    int bit_offset = 7 - (i % 8);
+                    int bit_mask = 1 << bit_offset;
+                    int code_masked = (code_block & bit_mask);
+                    int code_translated = code_masked >> bit_offset;
+
+                    // want to select the
+                    // std::cout << "bit_offset: " << bit_offset << std::endl;
+                    // std::cout << "bit_mask: " << bit_mask << std::endl;
+                    // std::cout << "code_masked: " << code_masked << std::endl;
+                    // std::cout << "code_translated: " << code_translated << std::endl;
+
+                    // Inner product
+                    // float dim_score = code_translated == 0 ? 0 : -1*query[i];
+
+                    // inner product
+                    float dim_score = code_translated == 0 ? 0 : -1*query[i];
+
+                    score += dim_score;
+                }
+                return score; // TODO weird things about negation in faiss and with innerproducts. 
+            };
 
             virtual float distance_to_code(const uint8_t* code) override {
 
@@ -77,30 +133,50 @@ namespace knn_jni {
 // //                return std::sqrt(score);
 // //                std::cout << "score: " << score;
 //                 return score;
-    float score = 0.0f;
-    for (int i = 0; i < dimension; i++) {
-        uint8_t code_block = code[(i / 8)];
-        int bit_offset = 7 - (i % 8);
-        int bit_mask = 1 << bit_offset;
-        int code_masked = (code_block & bit_mask);
-        int code_translated = code_masked >> bit_offset;
+    
 
-        // want to select the
-        // std::cout << "bit_offset: " << bit_offset << std::endl;
-        // std::cout << "bit_mask: " << bit_mask << std::endl;
-        // std::cout << "code_masked: " << code_masked << std::endl;
-        // std::cout << "code_translated: " << code_translated << std::endl;
+    // TODO make this less hacky; we're going to change things to use innerproduct next. 
 
-        // Inner product
-        // float dim_score = code_translated == 0 ? 0 : -1*query[i];
+    // Might want a better test suite than the preexisting so that I can verify that innerproduct distances are correct.
+    // probably just a float vector with 1s and 0s. Confirm that it's the same 
+                if (this->metric_type == faiss::METRIC_L2) {
+                    return distance_to_code_l2(code);
+                } else if (this->metric_type == faiss::METRIC_INNER_PRODUCT) {
+                    return distance_to_code_IP(code);
+                } else {
+std::cout << ("ADC distance computer called with unsupported metric, see faiss;:MetricType enum w metric" + std::to_string(this->metric_type)); // would be nice to have std::format w C++20....
+                    throw std::runtime_error(
+                        ("ADC distance computer called with unsupported metric, see faiss;:MetricType enum w metric" + std::to_string(this->metric_type)) // would be nice to have std::format w C++20....
+                    );
+                }
+   
+    // // Inner product distance
+    // float score = 0.0f;
+    // for (int i = 0; i < dimension; i++) {
+    //     uint8_t code_block = code[(i / 8)];
+    //     int bit_offset = 7 - (i % 8);
+    //     int bit_mask = 1 << bit_offset;
+    //     int code_masked = (code_block & bit_mask);
+    //     int code_translated = code_masked >> bit_offset;
 
-        // L2
-        float dim_score = (code_translated - query[i]) * (code_translated - query[i]);
+    //     // want to select the
+    //     // std::cout << "bit_offset: " << bit_offset << std::endl;
+    //     // std::cout << "bit_mask: " << bit_mask << std::endl;
+    //     // std::cout << "code_masked: " << code_masked << std::endl;
+    //     // std::cout << "code_translated: " << code_translated << std::endl;
 
-        score += dim_score;
-    }
-    return score;
-        };
+    //     // Inner product
+    //     // float dim_score = code_translated == 0 ? 0 : -1*query[i];
+
+    //     // inner product
+    //     float dim_score = code_translated == 0 ? 0 : -1*query[i];
+
+    //     score += dim_score;
+    // }
+    // return score; // TODO weird things about negation in faiss and with innerproducts. 
+};
+
+
 
             virtual void set_query(const float* x) override {
                 this->query = x;
@@ -116,14 +192,15 @@ namespace knn_jni {
 
         struct FaissIndexBQ : faiss::IndexFlatCodes {
 
-            FaissIndexBQ(faiss::idx_t d, std::vector<uint8_t> codes) : IndexFlatCodes(16, d, faiss::METRIC_L2){
-                std::cout << "FaissIndexBQ constructor called with codes lenght" << codes.size() << "and codes 0\n" << " and d/8 " << d/8 << " and d " << d;
+            FaissIndexBQ(faiss::idx_t d, std::vector<uint8_t> codes, faiss::MetricType metric=faiss::METRIC_L2) 
+            : IndexFlatCodes(d/8, d, metric){
+                std::cout << "FaissIndexBQ constructor called with codes lenght" << codes.size() << "and codes 0\n" << " and d/8 " << d/8 << " and d " << d << " and metric" << metric;
 // //                << codes[0] << "\n";
                 std::cout << "HEREHERHERH\n\n\n\n\n\n\n\n\n";
                 // this->d = d;
                 this->codes = codes;
-                // this->code_size = (d/8);
-                this->code_size = 16;
+                this->code_size = (d/8);
+                // this->code_size = 16;
             }
 
             void init(faiss::Index * parent, faiss::Index * grand_parent) {
@@ -139,13 +216,16 @@ namespace knn_jni {
                std::cout << "0th code: " << static_cast<int>(this->codes[0]) << "\n";
                 std::cout << "ntotal: " << this->ntotal << "\n";
                 std::cout << "code sz: " << this->code_size << "\n";
+                std::cout << "LOOK HERE!!!\n\n" << this->metric_type << "\n\nLOOK HERE!!!\n\n";
             //    std::cout << this->d << "\n";
 
             //    for (uint8_t code : this->codes) {
             //        std::cout << static_cast<int>(code) << " ";
             //    }
 
-                return new knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer((const uint8_t*) (this->codes.data()), 16, this->d);
+                return new knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer((const uint8_t*) (this->codes.data()), this->d/8, this->d,
+            this->metric_type);
+                // TODO make the code_size calculation better, including rounding up via (d + 7) / 8
             };
 
             // virtual void merge_from(faiss::Index& otherIndex, faiss::idx_t add_id = 0) override {
