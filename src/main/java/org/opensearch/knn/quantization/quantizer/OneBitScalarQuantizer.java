@@ -87,38 +87,12 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
         if (thresholds == null || thresholds.length != vectorLength) {
             throw new IllegalArgumentException("Thresholds must not be null and must match the dimension of the vector.");
         }
-        // float[][] rotationMatrix = binaryState.getRotationMatrix();
-        // if (rotationMatrix != null) {
-        // vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
-        // }
+        float[][] rotationMatrix = binaryState.getRotationMatrix();
+        if (rotationMatrix != null) {
+            vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
+        }
         output.prepareQuantizedVector(vectorLength);
         BitPacker.quantizeAndPackBits(vector, thresholds, output.getQuantizedVector());
-    }
-
-    @Override
-    public void transform(float[] vector, final QuantizationState state) {
-        if (vector == null) {
-            return;
-        }
-        validateState(state);
-        OneBitScalarQuantizationState binaryState = (OneBitScalarQuantizationState) state;
-        // float[][] rotationMatrix = binaryState.getRotationMatrix();
-        // if (rotationMatrix != null) {
-        // RandomGaussianRotation.applyRotation(vector, rotationMatrix);
-        // }
-
-        for (int i = 0; i < vector.length; i++) {
-            float aboveThreshold = binaryState.getAboveThresholdMeans()[i];
-            float belowThreshold = binaryState.getBelowThresholdMeans()[i];
-
-            vector[i] = (vector[i] - belowThreshold) / (aboveThreshold - belowThreshold);
-
-            // if (vector[i] < 0.0f) vector[i] = 0.0f;
-            // if (vector[i] > 1.0f) vector[i] = 1.0f;
-            // vector[i] = vector[i] >= binaryState.getMeanThresholds()[i] ? 1.0f : 0.0f;
-
-            // vector[i] = vector[i] < binaryState.getMeanThresholds()[i] ? 1.0f : 0.0f;
-        }
     }
 
     /**
