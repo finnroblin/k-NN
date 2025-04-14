@@ -111,10 +111,12 @@ public class MultiBitScalarQuantizer implements Quantizer<float[], byte[]> {
         int[] sampledIndices = sampler.sample(trainingRequest.getTotalNumberOfVectors(), samplingSize);
 
         ScalarQuantizationParams params = (bitsPerCoordinate == 2)
-            ? new ScalarQuantizationParams(ScalarQuantizationType.TWO_BIT)
-            : new ScalarQuantizationParams(ScalarQuantizationType.FOUR_BIT);
+                ? new ScalarQuantizationParams(ScalarQuantizationType.TWO_BIT)
+                : new ScalarQuantizationParams(ScalarQuantizationType.FOUR_BIT);
 
-        return QuantizerHelper.calculateQuantizationState(trainingRequest, sampledIndices, params, bitsPerCoordinate);
+        return QuantizerHelper.calculateQuantizationState(
+                trainingRequest, sampledIndices, params, bitsPerCoordinate
+        );
     }
 
     /**

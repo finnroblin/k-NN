@@ -45,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static com.carrotsearch.randomizedtesting.RandomizedTest.$;
@@ -270,8 +271,13 @@ public class NativeEngines990KnnVectorsWriterFlushTests extends OpenSearchTestCa
 
                 when(quantizationService.getQuantizationParams(fieldInfo, Version.LATEST)).thenReturn(quantizationParams);
                 try {
-                    when(quantizationService.train(quantizationParams, expectedVectorValuesSuppliers.get(i), vectorsPerField.get(i).size()))
-                        .thenReturn(quantizationState);
+                    when(
+                        quantizationService.train(
+                            quantizationParams,
+                            expectedVectorValuesSuppliers.get(i),
+                            vectorsPerField.get(i).size()
+                        )
+                    ).thenReturn(quantizationState);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
@@ -691,8 +697,13 @@ public class NativeEngines990KnnVectorsWriterFlushTests extends OpenSearchTestCa
 
                 when(quantizationService.getQuantizationParams(fieldInfo, Version.LATEST)).thenReturn(quantizationParams);
                 try {
-                    when(quantizationService.train(quantizationParams, expectedVectorValuesSuppliers.get(i), vectorsPerField.get(i).size()))
-                        .thenReturn(quantizationState);
+                    when(
+                        quantizationService.train(
+                            quantizationParams,
+                            expectedVectorValuesSuppliers.get(i),
+                            vectorsPerField.get(i).size()
+                        )
+                    ).thenReturn(quantizationState);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
@@ -791,8 +802,13 @@ public class NativeEngines990KnnVectorsWriterFlushTests extends OpenSearchTestCa
 
                 when(quantizationService.getQuantizationParams(fieldInfo, Version.LATEST)).thenReturn(quantizationParams);
                 try {
-                    when(quantizationService.train(quantizationParams, expectedVectorValuesSuppliers.get(i), vectorsPerField.get(i).size()))
-                        .thenReturn(quantizationState);
+                    when(
+                        quantizationService.train(
+                            quantizationParams,
+                            expectedVectorValuesSuppliers.get(i),
+                            vectorsPerField.get(i).size()
+                        )
+                    ).thenReturn(quantizationState);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
