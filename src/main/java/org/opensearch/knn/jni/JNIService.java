@@ -14,7 +14,6 @@ package org.opensearch.knn.jni;
 import org.apache.commons.lang.ArrayUtils;
 import org.opensearch.common.Nullable;
 import org.opensearch.knn.common.KNNConstants;
-import org.opensearch.knn.index.SpaceType;
 import org.opensearch.knn.index.engine.KNNEngine;
 import org.opensearch.knn.index.query.KNNQueryResult;
 import org.opensearch.knn.index.store.IndexInputWithBuffer;
@@ -169,7 +168,7 @@ public class JNIService {
     ) {
         if (KNNEngine.FAISS == knnEngine) {
             if (IndexUtil.isBinaryIndex(knnEngine, parameters)) {
-            FaissService.createBinaryIndexFromTemplate(ids, vectorsAddress, dim, output, templateIndex, parameters);
+                FaissService.createBinaryIndexFromTemplate(ids, vectorsAddress, dim, output, templateIndex, parameters);
                 return;
             }
             if (IndexUtil.isByteIndex(parameters)) {
@@ -203,12 +202,13 @@ public class JNIService {
             if (IndexUtil.isADCEnabled(knnEngine, parameters)) {
                 // get space type and level of quantization here...
                 // then we can pass these to the ADC index.
-//                System.out.println(parameters);
+                // System.out.println(parameters);
 
-//                SpaceType spaceType = (SpaceType) parameters.get(KNNConstants.SPACE_TYPE);
+                // SpaceType spaceType = (SpaceType) parameters.get(KNNConstants.SPACE_TYPE);
                 String spaceTypeAsString = parameters.get(KNNConstants.SPACE_TYPE).toString();
-                // parameters.get(spaceType) and then see what the default is if we don't specify (i.e. see if by default, spaceType shows up)
-//                return FaissService.loadIndexWithStreamADC(readStream, parameters);
+                // parameters.get(spaceType) and then see what the default is if we don't specify (i.e. see if by default, spaceType shows
+                // up)
+                // return FaissService.loadIndexWithStreamADC(readStream, parameters);
                 return FaissService.loadIndexWithStreamADC(readStream, spaceTypeAsString);
             }
 

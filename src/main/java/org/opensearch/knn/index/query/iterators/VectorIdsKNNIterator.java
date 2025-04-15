@@ -93,14 +93,14 @@ public class VectorIdsKNNIterator implements KNNIterator {
         final float[] vector = knnFloatVectorValues.getVector();
 
         /*
-        * do some more investigation for rescoring... 
-        rescore on -> computeScore called, should hit else block. 
-            * add 
+        * do some more investigation for rescoring...
+        rescore on -> computeScore called, should hit else block.
+            * add
             * filter and for exact search (threshold is low, doesn't build graph strucutre), we do exact search on the index.
             efficient filtering -- serach idx w filter, if hnsw level is super sparse then do an exact search.
 
-            faiss will return hamming distance codes, for SEGMENT CONSISTENCY we need to use exact search on HAMMING 
-        */        
+            faiss will return hamming distance codes, for SEGMENT CONSISTENCY we need to use exact search on HAMMING
+        */
         if (segmentLevelQuantizationInfo != null) {
             // TODO here
             if (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)) {
@@ -120,22 +120,21 @@ public class VectorIdsKNNIterator implements KNNIterator {
         // scores correspond to closer vectors.
         // note: the query vector is not transformed here if using adc, which I think is expected.
         return spaceType.getKnnVectorSimilarityFunction().compare(queryVector, vector);
-//        double distance = 0.0f;
-//        for (int i = 0; i < vector.length; i++) {
-//            // TODO: This only makes sense for l2
-//            distance += Math.pow(vector[i] - queryVector[i], 2);
-//        }
-//        return (float) distance;
-        // log.info("just doing the vector calc again" + vector[0] + " .  " + vector[1]);
-        
-        
         // double distance = 0.0f;
         // for (int i = 0; i < vector.length; i++) {
-        //         // TODO: This only makes sense for l2
-        //         distance += Math.pow(vector[i] - queryVector[i], 2);
+        // // TODO: This only makes sense for l2
+        // distance += Math.pow(vector[i] - queryVector[i], 2);
         // }
         // return (float) distance;
-        
+        // log.info("just doing the vector calc again" + vector[0] + " . " + vector[1]);
+
+        // double distance = 0.0f;
+        // for (int i = 0; i < vector.length; i++) {
+        // // TODO: This only makes sense for l2
+        // distance += Math.pow(vector[i] - queryVector[i], 2);
+        // }
+        // return (float) distance;
+
     }
 
     protected int getNextDocId() throws IOException {

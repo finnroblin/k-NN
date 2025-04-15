@@ -50,7 +50,6 @@ import static org.opensearch.knn.common.KNNConstants.TYPE_KNN_VECTOR;
 import static org.opensearch.knn.index.KNNSettings.INDEX_KNN_ADVANCED_APPROXIMATE_THRESHOLD;
 import static org.opensearch.knn.index.KNNSettings.KNN_ALGO_PARAM_INDEX_THREAD_QTY;
 import static org.opensearch.knn.index.KNNSettings.KNN_MEMORY_CIRCUIT_BREAKER_ENABLED;
-import static org.opensearch.knn.index.query.parser.RescoreParser.RESCORE_PARAMETER;
 
 /**
  * Tests confirm that for the different supported configurations, recall is sound. The recall thresholds are
@@ -122,14 +121,14 @@ public class RecallTestsIT extends KNNRestTestCase {
      *              "ef_construction": {HNSW_EF_CONSTRUCTION},
      *              "ef_search": {HNSW_EF_SEARCH},
      *              "mode": "on_disk",
-     *             
+     *
      *          }
      *       }
      *     }
      *   }
      *
      * }
-     * Then rescore: false passed to the query. 
+     * Then rescore: false passed to the query.
      */
     @SneakyThrows
     public void testRecall_whenADCENabled_thenRecallAbove40Percent() {
@@ -488,7 +487,7 @@ public class RecallTestsIT extends KNNRestTestCase {
         assertEquals(PERFECT_RECALL, recallValue, acceptableRecallFromPerfect);
     }
 
-    @SneakyThrows 
+    @SneakyThrows
     private void assertRecallNoRescore(String testIndexName, SpaceType spaceType, float acceptableRecallFromPerfect) {
         List<List<String>> searchResults = bulkSearchWithNoRescore(testIndexName, TEST_FIELD_NAME, QUERY_VECTORS, TEST_K);
         double recallValue = TestUtils.calculateRecallValue(searchResults, GROUND_TRUTH.get(spaceType), TEST_K);

@@ -52,7 +52,6 @@ import org.opensearch.script.Script;
 import org.opensearch.search.SearchService;
 import org.opensearch.search.aggregations.metrics.ScriptedMetricAggregationBuilder;
 
-
 import javax.management.MBeanServerInvocationHandler;
 import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
@@ -1719,7 +1718,7 @@ public class KNNRestTestCase extends ODFERestTestCase {
         List<String> kVectors;
 
         for (int i = 0; i < queryVectors.length; i++) {
-            
+
             KNNQueryBuilder knnQueryBuilderRecall = new KNNQueryBuilder(testField, queryVectors[i], k);
             Response respRecall = searchKNNIndex(testIndex, knnQueryBuilderRecall, k);
             List<KNNResult> resultsRecall = parseSearchResponse(EntityUtils.toString(respRecall.getEntity()), testField);
@@ -1734,10 +1733,11 @@ public class KNNRestTestCase extends ODFERestTestCase {
 
         return searchResults;
     }
+
     public List<List<String>> bulkSearchWithNoRescore(String testIndex, String testField, float[][] queryVectors, int k) throws Exception {
         List<List<String>> searchResults = new ArrayList<>();
         List<String> kVectors;
-    
+
         for (int i = 0; i < queryVectors.length; i++) {
             // Create KNNQueryBuilder with rescore disabled using the builder pattern
             KNNQueryBuilder knnQueryBuilderRecall = KNNQueryBuilder.builder()
@@ -1746,10 +1746,10 @@ public class KNNRestTestCase extends ODFERestTestCase {
                 .k(k)
                 .rescoreContext(RescoreContext.EXPLICITLY_DISABLED_RESCORE_CONTEXT)
                 .build();
-    
+
             Response respRecall = searchKNNIndex(testIndex, knnQueryBuilderRecall, k);
             List<KNNResult> resultsRecall = parseSearchResponse(EntityUtils.toString(respRecall.getEntity()), testField);
-    
+
             assertEquals(resultsRecall.size(), k);
             kVectors = new ArrayList<>();
             for (KNNResult result : resultsRecall) {
@@ -1757,11 +1757,9 @@ public class KNNRestTestCase extends ODFERestTestCase {
             }
             searchResults.add(kVectors);
         }
-    
+
         return searchResults;
     }
-    
-    
 
     // Method that waits till the health of nodes in the cluster goes green
     public void waitForClusterHealthGreen(String numOfNodes) throws IOException {

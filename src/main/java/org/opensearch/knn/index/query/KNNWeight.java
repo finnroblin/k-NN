@@ -378,8 +378,7 @@ public class KNNWeight extends Weight {
             }
             int[] parentIds = getParentIdsArray(context);
             if (k > 0) {
-                if (
-                        knnQuery.getVectorDataType() == VectorDataType.BINARY
+                if (knnQuery.getVectorDataType() == VectorDataType.BINARY
                     || quantizedVector != null && quantizationService.getVectorDataTypeForTransfer(fieldInfo) == VectorDataType.BINARY) {
                     results = JNIService.queryBinaryIndex(
                         indexAllocation.getMemoryAddress(),
@@ -395,8 +394,8 @@ public class KNNWeight extends Weight {
                 } else {
                     results = JNIService.queryIndex(
                         indexAllocation.getMemoryAddress(),
-                            transformedvector,
-//                        quantizedVector,
+                        transformedvector,
+                        // quantizedVector,
                         k,
                         knnQuery.getMethodParameters(),
                         knnEngine,
@@ -431,13 +430,13 @@ public class KNNWeight extends Weight {
         }
         // make sure score are getting mapped to correct space type on 431
         // maybe getting scored here? check that the scores are getting called hamming or otherwise.
-        // debugging step. 
+        // debugging step.
         // confirm on jni layer that a better result is a lower score. expecting faiss to return lower results for better distances.
         // score in jni where we're calling search.
         if (quantizedVector != null) {
 
             Map<Integer, Float> afterRescoreWQuantized = Arrays.stream(results)
-                    .collect(Collectors.toMap(KNNQueryResult::getId, result -> knnEngine.score(result.getScore(), SpaceType.HAMMING)));
+                .collect(Collectors.toMap(KNNQueryResult::getId, result -> knnEngine.score(result.getScore(), SpaceType.HAMMING)));
             log.info("after rescore hamming: " + afterRescoreWQuantized);
             return afterRescoreWQuantized;
         }

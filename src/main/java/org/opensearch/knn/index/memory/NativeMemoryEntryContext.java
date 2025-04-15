@@ -187,7 +187,7 @@ public abstract class NativeMemoryEntryContext<T extends NativeMemoryAllocation>
                 log.debug("about to open with IndexInputWithBuffer");
                 indexInputWithBuffer = new IndexInputWithBuffer(readStream);
                 indexGraphFileOpened = true;
-//                log.info("[KNN] NativeMemoryCacheManager open successful");
+                // log.info("[KNN] NativeMemoryCacheManager open successful");
             } catch (IOException e) {
                 throw new RuntimeException("Failed to open the index " + openSearchIndexName);
             }

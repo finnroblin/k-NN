@@ -440,17 +440,17 @@ public class NativeMemoryCacheManager implements Closeable {
                 String key = nativeMemoryEntryContext.getKey();
                 open(key, nativeMemoryEntryContext);
 
-//                log.info("Native memory Etnry ocntext, {}", nativeMemoryEntryContext);
+                // log.info("Native memory Etnry ocntext, {}", nativeMemoryEntryContext);
 
-//                try {
-//                    NativeMemoryAllocation res = nativeMemoryEntryContext.load();
-////                    log.info("after res cal");
-//
-//                } catch (Exception e) {
-//                    log.info(e);
-//                }
+                // try {
+                // NativeMemoryAllocation res = nativeMemoryEntryContext.load();
+                //// log.info("after res cal");
+                //
+                // } catch (Exception e) {
+                // log.info(e);
+                // }
                 NativeMemoryAllocation res = cache.get(key, nativeMemoryEntryContext::load);
-                log.debug("res: {}",res);
+                log.debug("res: {}", res);
                 return res;
             }
         }

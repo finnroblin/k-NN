@@ -18,8 +18,6 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import lombok.extern.log4j.Log4j2;
-
 import static org.opensearch.knn.common.KNNVectorUtil.isZeroVector;
 
 /**
@@ -28,7 +26,6 @@ import static org.opensearch.knn.common.KNNVectorUtil.isZeroVector;
  * propagated up to the Java layer. Additionally, naming translations should be done in jni layer as well. For example,
  * nmslib calls the inner_product space "negdotprod". This translation should take place in the nmslib's jni layer.
  */
-@Log4j2
 public enum SpaceType {
     // This undefined space type is used to indicate that space type is not provided by user
     // Later, we need to assign a default value based on data type
@@ -46,7 +43,6 @@ public enum SpaceType {
     L2("l2") {
         @Override
         public float scoreTranslation(float rawScore) {
-            // log.info("translating rawscore: " + rawScore, rawScore);
             return 1 / (1 + rawScore);
         }
 
