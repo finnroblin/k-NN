@@ -64,7 +64,7 @@ public class RestKNNWarmupHandler extends BaseRestHandler {
     @Override
     protected RestChannelConsumer prepareRequest(RestRequest request, NodeClient client) {
         KNNWarmupRequest knnWarmupRequest = createKNNWarmupRequest(request);
-        logger.info("[KNN] Warmup started for the following indices: " + String.join(",", knnWarmupRequest.indices()));
+//        logger.info("[KNN] Warmup started for the following indices: " + String.join(",", knnWarmupRequest.indices()));
         return channel -> client.execute(KNNWarmupAction.INSTANCE, knnWarmupRequest, new RestToXContentListener<>(channel));
     }
 

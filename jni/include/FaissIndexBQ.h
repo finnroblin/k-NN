@@ -85,10 +85,11 @@ namespace knn_jni {
 
                     // inner product
                     float dim_score = code_translated == 0 ? 0 : -1*query[i];
+                    // float dim_score = code_translated * query[i];
 
                     score += dim_score;
                 }
-                return score; // TODO weird things about negation in faiss and with innerproducts. 
+                return -score; // TODO weird things about negation in faiss and with innerproducts. 
             };
 
             virtual float distance_to_code(const uint8_t* code) override {
@@ -194,9 +195,9 @@ std::cout << ("ADC distance computer called with unsupported metric, see faiss;:
 
             FaissIndexBQ(faiss::idx_t d, std::vector<uint8_t> codes, faiss::MetricType metric=faiss::METRIC_L2) 
             : IndexFlatCodes(d/8, d, metric){
-                std::cout << "FaissIndexBQ constructor called with codes lenght" << codes.size() << "and codes 0\n" << " and d/8 " << d/8 << " and d " << d << " and metric" << metric;
-// //                << codes[0] << "\n";
-                std::cout << "HEREHERHERH\n\n\n\n\n\n\n\n\n";
+                // std::cout << "FaissIndexBQ constructor called with codes lenght" << codes.size() << "and codes 0\n" << " and d/8 " << d/8 << " and d " << d << " and metric" << metric;
+//                << codes[0] << "\n";
+                // std::cout << "\nHEREHERHERH\n\n\n\n\n\n\n\n\n";
                 // this->d = d;
                 this->codes = codes;
                 this->code_size = (d/8);
@@ -212,17 +213,17 @@ std::cout << ("ADC distance computer called with unsupported metric, see faiss;:
 
             /** a FlatCodesDistanceComputer offers a distance_to_code method */
             faiss::FlatCodesDistanceComputer* get_FlatCodesDistanceComputer() const override {
-                std::cout << "number of codes: " << this->codes.size() << "\n\n\n HEREHERHEHEREHRHEHRUIHWEUIFHIU\n\\n\n\n\n\n"; // 4400
-               std::cout << "0th code: " << static_cast<int>(this->codes[0]) << "\n";
-                std::cout << "ntotal: " << this->ntotal << "\n";
-                std::cout << "code sz: " << this->code_size << "\n";
-                std::cout << "LOOK HERE!!!\n\n" << this->metric_type << "\n\nLOOK HERE!!!\n\n";
+                // std::cout << "number of codes: " << this->codes.size() << "\n\n\n HEREHERHEHEREHRHEHRUIHWEUIFHIU\n\\n\n\n\n\n"; // 4400
+            //    std::cout << "0th code: " << static_cast<int>(this->codes[0]) << "\n";
+                // std::cout << "ntotal: " << this->ntotal << "\n";
+                // std::cout << "code sz: " << this->code_size << "\n" << std::endl;
+                // std::cout << "LOOK HERE!!!\n\n" << this->metric_type << "\n\nLOOK HERE!!!\n\n" << std::endl;
             //    std::cout << this->d << "\n";
 
             //    for (uint8_t code : this->codes) {
             //        std::cout << static_cast<int>(code) << " ";
             //    }
-
+// faiss::METRIC_INNER_PRODUCT
                 return new knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer((const uint8_t*) (this->codes.data()), this->d/8, this->d,
             this->metric_type);
                 // TODO make the code_size calculation better, including rounding up via (d + 7) / 8

@@ -154,7 +154,7 @@ JNIEXPORT jlong JNICALL Java_org_opensearch_knn_jni_FaissService_loadBinaryIndex
  * Signature: (Lorg/opensearch/knn/index/store/IndexInputWithBuffer;)J
  */
 JNIEXPORT jlong JNICALL Java_org_opensearch_knn_jni_FaissService_loadIndexWithStreamADC
-        (JNIEnv *, jclass, jobject);
+        (JNIEnv *, jclass, jobject, jstring);
 
 /*
  * Class:     org_opensearch_knn_jni_FaissService

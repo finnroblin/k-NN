@@ -29,11 +29,14 @@ import org.opensearch.knn.index.memory.NativeMemoryEntryContext;
 import org.opensearch.knn.index.memory.NativeMemoryLoadStrategy;
 import org.opensearch.knn.index.engine.KNNEngine;
 import org.opensearch.knn.index.query.SegmentLevelQuantizationInfo;
+import org.opensearch.knn.index.query.SegmentLevelQuantizationUtil;
+import org.opensearch.knn.index.util.IndexUtil;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Vector;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
@@ -89,7 +92,7 @@ public class KNNIndexShard {
      * @throws IOException Thrown when getting the HNSW Paths to be loaded in
      */
     public void warmup() throws IOException {
-        log.info("[KNN] Warming up index: [{}]", getIndexName());
+//        log.info("[KNN] Warming up index: [{}]", getIndexName());
         final Directory directory = indexShard.store().directory();
         try (Engine.Searcher searcher = indexShard.acquireSearcher("knn-warmup")) {
             getAllEngineFileContexts(searcher.getIndexReader()).forEach((engineFileContext) -> {
@@ -107,7 +110,8 @@ public class KNNIndexShard {
                                 engineFileContext.getSpaceType(),
                                 KNNEngine.getEngineNameFromPath(engineFileContext.getVectorFileName()),
                                 getIndexName(),
-                                engineFileContext.getVectorDataType(),
+//                                engineFileContext.getVectorDataType(),
+                                    VectorDataType.FLOAT,
                                 engineFileContext.getSegmentLevelQuantizationInfo()
                             ),
                             getIndexName(),
@@ -120,6 +124,7 @@ public class KNNIndexShard {
                 }
             });
         }
+        // log.info("after warmup");
     }
 
     /**
@@ -199,11 +204,17 @@ public class KNNIndexShard {
                             fileExtension,
                             spaceType,
                             modelId,
-                            FieldInfoExtractor.extractQuantizationConfig(fieldInfo) == QuantizationConfig.EMPTY
-                                ? VectorDataType.get(
-                                    fieldInfo.attributes().getOrDefault(VECTOR_DATA_TYPE_FIELD, VectorDataType.FLOAT.getValue())
+//                            FieldInfoExtractor.extractQuantizationConfig(fieldInfo) == QuantizationConfig.EMPTY
+//                                ? VectorDataType.get(
+//                                    fieldInfo.attributes().getOrDefault(VECTOR_DATA_TYPE_FIELD, VectorDataType.FLOAT.getValue())
+//                                )
+//                                : VectorDataType.BINARY
+                                FieldInfoExtractor.extractQuantizationConfig(fieldInfo) == QuantizationConfig.EMPTY
+                                        ? VectorDataType.get(
+                                        fieldInfo.attributes().getOrDefault(VECTOR_DATA_TYPE_FIELD, VectorDataType.FLOAT.getValue())
                                 )
-                                : VectorDataType.BINARY
+                                        : (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)
+                                        ? VectorDataType.FLOAT : VectorDataType.BINARY ) // TODO fix ugly nested ternary
                         )
                     );
                 }

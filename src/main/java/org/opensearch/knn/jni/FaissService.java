@@ -12,6 +12,7 @@
 package org.opensearch.knn.jni;
 
 import org.opensearch.knn.common.KNNConstants;
+import org.opensearch.knn.index.SpaceType;
 import org.opensearch.knn.index.engine.KNNEngine;
 import org.opensearch.knn.index.query.KNNQueryResult;
 import org.opensearch.knn.index.store.IndexInputWithBuffer;
@@ -237,9 +238,11 @@ class FaissService {
      * Load an index into memory via a wrapping having Lucene's IndexInput with ADC
      *
      * @param readStream IndexInput wrapper having a Lucene's IndexInput reference.
+     * @param spaceType the underlying space type of the index (L2 or innerproduct)
      * @return pointer to location in memory the index resides in
      */
-    public static native long loadIndexWithStreamADC(IndexInputWithBuffer readStream);
+    public static native long loadIndexWithStreamADC(IndexInputWithBuffer readStream, String spaceType);
+//                                                     Map<String, Object> parameters);
 
     /**
      * Load a binary index into memory

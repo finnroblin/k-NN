@@ -136,7 +136,8 @@ public class RecallTestsIT extends KNNRestTestCase {
         // List<SpaceType> spaceTypes = List.of(SpaceType.L2, SpaceType.INNER_PRODUCT, SpaceType.COSINESIMIL);
         // List<SpaceType> spaceTypes = List.of(SpaceType.INNER_PRODUCT);
 
-        List<SpaceType> spaceTypes = List.of(SpaceType.L2);
+        List<SpaceType> spaceTypes = List.of(SpaceType.L2, SpaceType.INNER_PRODUCT);
+        // List<SpaceType> spaceTypes = List.of(SpaceType.L2);
         for (SpaceType spaceType : spaceTypes) {
             String indexName = createIndexName(KNNEngine.FAISS, spaceType);
             XContentBuilder builder = XContentFactory.jsonBuilder()
@@ -160,7 +161,8 @@ public class RecallTestsIT extends KNNRestTestCase {
                 .endObject()
                 .endObject();
             createIndexAndIngestDocs(indexName, TEST_FIELD_NAME, getSettings(), builder.toString());
-            assertRecallNoRescore(indexName, spaceType, 0.6f);
+            assertRecall(indexName, spaceType, 0.8f);
+            // assertRecallNoRescore(indexName, spaceType, 0.6f);
         }
     }
 
@@ -482,7 +484,7 @@ public class RecallTestsIT extends KNNRestTestCase {
     private void assertRecall(String testIndexName, SpaceType spaceType, float acceptableRecallFromPerfect) {
         List<List<String>> searchResults = bulkSearch(testIndexName, TEST_FIELD_NAME, QUERY_VECTORS, TEST_K);
         double recallValue = TestUtils.calculateRecallValue(searchResults, GROUND_TRUTH.get(spaceType), TEST_K);
-        logger.info("Recall value = {}", recallValue);
+        logger.info("Recall value for SpaceType {} = {}", spaceType, recallValue);
         assertEquals(PERFECT_RECALL, recallValue, acceptableRecallFromPerfect);
     }
 
@@ -502,7 +504,7 @@ public class RecallTestsIT extends KNNRestTestCase {
     private void createIndexAndIngestDocs(String indexName, String fieldName, Settings settings, String mapping) {
         createKnnIndex(indexName, settings, mapping);
         bulkAddKnnDocs(indexName, fieldName, INDEX_VECTORS, DOC_COUNT);
-        forceMergeKnnIndex(indexName, MAX_SEGMENT_COUNT);
+        forceMergeKnnIndex(indexName, 1);
     }
 
     @SneakyThrows

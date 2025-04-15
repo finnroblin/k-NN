@@ -320,6 +320,7 @@ public class KNNWeight extends Weight {
         float[] transformedvector = null;
         if (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)) {
             transformedvector = knnQuery.getQueryVector().clone();
+            // log.info("made it through to the transform");
             SegmentLevelQuantizationUtil.transformVector(transformedvector, segmentLevelQuantizationInfo);
         } else {
 
@@ -433,8 +434,6 @@ public class KNNWeight extends Weight {
         // debugging step. 
         // confirm on jni layer that a better result is a lower score. expecting faiss to return lower results for better distances.
         // score in jni where we're calling search.
-        log.info("results: " + results);
-
         if (quantizedVector != null) {
 
             Map<Integer, Float> afterRescoreWQuantized = Arrays.stream(results)
@@ -445,7 +444,6 @@ public class KNNWeight extends Weight {
         Map<Integer, Float> afterRescore = Arrays.stream(results)
             .collect(Collectors.toMap(KNNQueryResult::getId, result -> knnEngine.score(result.getScore(), spaceType)));
 
-        log.info("after rescore" + afterRescore);
         return afterRescore;
     }
 

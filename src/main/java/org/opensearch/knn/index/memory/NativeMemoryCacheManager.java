@@ -18,6 +18,7 @@ import com.google.common.cache.RemovalCause;
 import com.google.common.cache.RemovalNotification;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.extern.log4j.Log4j2;
 import org.apache.commons.lang.Validate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -47,6 +48,7 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * Manages native memory allocations made by JNI.
  */
+@Log4j2
 public class NativeMemoryCacheManager implements Closeable {
 
     public static String GRAPH_COUNT = "graph_count";
@@ -437,7 +439,19 @@ public class NativeMemoryCacheManager implements Closeable {
             try (nativeMemoryEntryContext) {
                 String key = nativeMemoryEntryContext.getKey();
                 open(key, nativeMemoryEntryContext);
-                return cache.get(key, nativeMemoryEntryContext::load);
+
+//                log.info("Native memory Etnry ocntext, {}", nativeMemoryEntryContext);
+
+//                try {
+//                    NativeMemoryAllocation res = nativeMemoryEntryContext.load();
+////                    log.info("after res cal");
+//
+//                } catch (Exception e) {
+//                    log.info(e);
+//                }
+                NativeMemoryAllocation res = cache.get(key, nativeMemoryEntryContext::load);
+                log.debug("res: {}",res);
+                return res;
             }
         }
     }

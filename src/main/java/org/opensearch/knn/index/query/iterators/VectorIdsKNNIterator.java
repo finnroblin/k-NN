@@ -91,7 +91,6 @@ public class VectorIdsKNNIterator implements KNNIterator {
 
     protected float computeScore() throws IOException {
         final float[] vector = knnFloatVectorValues.getVector();
-        log.info("ComputeScore called which I think means exact search...");
 
         /*
         * do some more investigation for rescoring... 
@@ -116,8 +115,6 @@ public class VectorIdsKNNIterator implements KNNIterator {
             // redo the hamming so that we can stay consistent w the faiss scores.
             byte[] quantizedVector = SegmentLevelQuantizationUtil.quantizeVector(vector, segmentLevelQuantizationInfo);
             return SpaceType.HAMMING.getKnnVectorSimilarityFunction().compare(quantizedQueryVector, quantizedVector);
-        } else {
-            log.info("nothing happened for some reason...");
         }
         // Calculates a similarity score between the two vectors with a specified function. Higher similarity
         // scores correspond to closer vectors.

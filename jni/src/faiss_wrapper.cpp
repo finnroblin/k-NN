@@ -464,25 +464,38 @@ jlong knn_jni::faiss_wrapper::LoadIndexWithStream(faiss::IOReader* ioReader) {
     return (jlong) indexReader;
 }
 
-jlong knn_jni::faiss_wrapper::LoadIndexWithStreamADC(faiss::IOReader* ioReader) {
+jlong knn_jni::faiss_wrapper::LoadIndexWithStreamADC(faiss::IOReader* ioReader, faiss::MetricType metricType) {
     if (ioReader == nullptr)  {
         throw std::runtime_error("IOReader cannot be null");
     }
 
     // Extract the relevant info from the binary index
     faiss::IndexBinary* indexReader = (faiss::IndexBinary*) LoadBinaryIndexWithStream(ioReader);
+    if (!indexReader) throw std::runtime_error("ERROR: LOADBINARYINDEXWITHSTREAM IS NULL!!!\n");
     faiss::IndexBinaryIDMap * binaryIdMap = (faiss::IndexBinaryIDMap *) indexReader;
+    if (!binaryIdMap->index) throw std::runtime_error("ERROR: hnswBinary IS NULL!!!\n");
     faiss::IndexBinaryHNSW * hnswBinary = (faiss::IndexBinaryHNSW *)(binaryIdMap->index); // hnsw index sits on top
+    if (!hnswBinary->storage) throw std::runtime_error("ERROR: hnswBinary->Storage is NULL!!");
     faiss::IndexBinaryFlat * codesIndex = (faiss::IndexBinaryFlat *) hnswBinary->storage; // since binary storage is binary flat codes
     // faiss::HNSW hnsw = hnswBinary->hnsw;
+    // if (!codesIndex->xb) throw std::runtime_error("codes are broken!!\n");
     std::vector<uint8_t> codes = codesIndex->xb;
+    // std::cout << "printing with metricType " << metricType << " \n";
     // if (hnswBinary->metric_type == nullptr) {
     //     // std::cout
     // // }
-    // std::cout << "metric type:\n\n\n\n\n" << std::to_string(hnswBinary->metric_type) << "\n----\n";
+    // std::cout << "just before we print the metric type: " << std::endl;
+    // std::cout << "metric type: " << std::to_string(indexReader->metric_type) << " and actual metric type from java " << metricType <<  "\n----\n" << std::endl;
 
     // Create the new float index
-    knn_jni::faiss_wrapper::FaissIndexBQ * alteredStorage = new knn_jni::faiss_wrapper::FaissIndexBQ(indexReader->d, codes,hnswBinary->metric_type);
+    // for some reason there's a segfault here...
+    // knn_jni::faiss_wrapper::FaissIndexBQ * alteredStorage = new knn_jni::faiss_wrapper::FaissIndexBQ(indexReader->d, codes);
+
+    // for whatever reason, it doesn't pass in the innerproduct correctly, so we're also going to pass in params here.
+
+    knn_jni::faiss_wrapper::FaissIndexBQ * alteredStorage = new knn_jni::faiss_wrapper::FaissIndexBQ(
+        indexReader->d, codes, metricType);
+        // indexReader->metric_type);
     faiss::IndexHNSW * alteredIndexHNSW = new faiss::IndexHNSW(alteredStorage, 32);     //TODO fix M
     alteredIndexHNSW->hnsw = hnswBinary->hnsw;
     faiss::IndexIDMap * alteredIdMap = new faiss::IndexIDMap(alteredIndexHNSW);
@@ -666,8 +679,8 @@ jobjectArray knn_jni::faiss_wrapper::QueryIndex_WithFilter(knn_jni::JNIUtilInter
             }
         }
         try {
-            std::cout << "going through search now, here is the rawQueryvector\n";
-            std::cout << rawQueryvector[0] << "ahahaha\n";
+            // std::cout << "going through search now, here is the rawQueryvector\n";
+            // std::cout << rawQueryvector[0] << "ahahaha\n";
             indexReader->search(1, rawQueryvector, kJ, dis.data(), ids.data(), searchParameters);
         } catch (...) {
             jniUtil->ReleaseFloatArrayElements(env, queryVectorJ, rawQueryvector, JNI_ABORT);
@@ -1036,7 +1049,7 @@ jbyteArray knn_jni::faiss_wrapper::TrainByteIndex(knn_jni::JNIUtilInterface * jn
 }
 
 
-faiss::MetricType TranslateSpaceToMetric(const std::string& spaceType) {
+faiss::MetricType knn_jni::faiss_wrapper::TranslateSpaceToMetric(const std::string& spaceType) {
     if (spaceType == knn_jni::L2) {
         return faiss::METRIC_L2;
     }
@@ -1050,7 +1063,7 @@ faiss::MetricType TranslateSpaceToMetric(const std::string& spaceType) {
         return faiss::METRIC_L2;
     }
 
-    throw std::runtime_error("Invalid spaceType");
+    throw std::runtime_error("Invalid spaceType: " + spaceType);
 }
 
 void SetExtraParameters(knn_jni::JNIUtilInterface * jniUtil, JNIEnv *env,

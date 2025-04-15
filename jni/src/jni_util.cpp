@@ -16,7 +16,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
-
+#include <iostream>
 
 void knn_jni::JNIUtil::Initialize(JNIEnv *env) {
     // Followed recommendation from this SO post: https://stackoverflow.com/a/13940735
@@ -170,7 +170,6 @@ std::unordered_map<std::string, jobject> knn_jni::JNIUtil::ConvertJavaMapToCppMa
 
         valueJ = env->CallObjectMethod(entryJ, getValueMethodJ);
         this->HasExceptionInStack(env, R"(Could not call "getValue" method")");
-
         parametersCpp[keyCpp] = valueJ;
 
         env->DeleteLocalRef(entryJ);

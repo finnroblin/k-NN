@@ -300,7 +300,9 @@ JNIEXPORT jlong JNICALL Java_org_opensearch_knn_jni_FaissService_loadBinaryIndex
 }
 
 JNIEXPORT jlong JNICALL Java_org_opensearch_knn_jni_FaissService_loadIndexWithStreamADC
-        (JNIEnv * env, jclass cls, jobject readStream)
+        // (JNIEnv * env, jclass cls, jobject readStream, jobject spaceTypeJ)
+        // (JNIEnv * env, jclass cls, jobject readStream, jobject parametersJ)
+        (JNIEnv * env, jclass cls, jobject readStream, jstring spaceTypeStringJ) 
 {
     try {
         // Create a mediator locally.
@@ -310,9 +312,17 @@ JNIEXPORT jlong JNICALL Java_org_opensearch_knn_jni_FaissService_loadIndexWithSt
         // Wrap the mediator with a glue code inheriting IOReader.
         knn_jni::stream::FaissOpenSearchIOReader faissOpenSearchIOReader {&mediator};
 
+        // auto parametersCpp = jniUtil.ConvertJavaMapToCppMap(env, parametersJ);
+        // Grab the space type from the spaceType object, convert to a metric
+        // jobject spaceTypeJ = knn_jni::GetJObjectFromMapOrThrow(parametersCpp, knn_jni::SPACE_TYPE);
+
+        std::string spaceTypeCpp(jniUtil.ConvertJavaObjectToCppString(env, spaceTypeStringJ));
+        // std::cout << "spaceTypeCpp: " << spaceTypeCpp << std::endl;
+        faiss::MetricType metric = knn_jni::faiss_wrapper::TranslateSpaceToMetric(spaceTypeCpp);
+
         // Pass IOReader to Faiss for loading vector index.
         return knn_jni::faiss_wrapper::LoadIndexWithStreamADC(
-                &faissOpenSearchIOReader);
+                &faissOpenSearchIOReader, metric);
     } catch (...) {
         jniUtil.CatchCppExceptionAndThrowJava(env);
     }

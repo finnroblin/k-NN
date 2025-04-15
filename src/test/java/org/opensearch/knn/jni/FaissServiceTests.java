@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.net.URL;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.opensearch.knn.common.KNNConstants.INDEX_DESCRIPTION_PARAMETER;
@@ -51,6 +52,7 @@ public class FaissServiceTests extends KNNTestCase {
 
     @SneakyThrows
     public void testLoadIndexWithStreamADC() {
+        SpaceType spaceTypeForADC = SpaceType.L2;
         Path tempDirPath = createTempDir();
         String indexFileName1 = "test1" + UUID.randomUUID() + ".tmp";
         try (Directory directory = newFSDirectory(tempDirPath)) {
@@ -75,7 +77,8 @@ public class FaissServiceTests extends KNNTestCase {
             assertTrue(directory.fileLength(indexFileName1) > 0);
 
             try (IndexInput indexInput = directory.openInput(indexFileName1, IOContext.DEFAULT)) {
-                long indexAddr = FaissService.loadIndexWithStreamADC(new IndexInputWithBuffer(indexInput));
+                long indexAddr = FaissService.loadIndexWithStreamADC(new IndexInputWithBuffer(indexInput), SpaceType.L2.toString());
+//                        Map.of(KNNConstants.SPACE_TYPE, spaceTypeForADC));
                 // Load the index for ADC, effectively converting it from a binary HNSW index to a regular HNSW index
                 for (float[] query : testData.queries) {
                     KNNQueryResult[] results = JNIService.queryIndex(
