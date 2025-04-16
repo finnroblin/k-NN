@@ -491,7 +491,8 @@ public class KNNWeight extends Weight {
                         knnEngine,
                         knnQuery.getIndexName(),
                         // TODO: In the future, more vector data types will be supported with quantization
-                        quantizedVector == null ? vectorDataType : VectorDataType.BINARY
+                        quantizedVector == null ? vectorDataType : VectorDataType.BINARY,
+                        segmentLevelQuantizationInfo
                     ),
                     knnQuery.getIndexName(),
                     modelId

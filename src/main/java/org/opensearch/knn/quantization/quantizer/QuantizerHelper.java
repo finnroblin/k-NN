@@ -40,9 +40,9 @@ class QuantizerHelper {
      * @throws IOException If vector retrieval fails.
      */
     static OneBitScalarQuantizationState calculateQuantizationState(
-            TrainingRequest<float[]> trainingRequest,
-            int[] sampledIndices,
-            ScalarQuantizationParams quantizationParams
+        TrainingRequest<float[]> trainingRequest,
+        int[] sampledIndices,
+        ScalarQuantizationParams quantizationParams
     ) throws IOException {
         validateSampledIndices(sampledIndices);
 
@@ -60,19 +60,19 @@ class QuantizerHelper {
 
         if (rotationMatrix != null) {
             belowAbove = new Pair<>(
-                    RandomGaussianRotation.applyRotation(belowAbove.getA(), rotationMatrix),
-                    RandomGaussianRotation.applyRotation(belowAbove.getB(), rotationMatrix)
+                RandomGaussianRotation.applyRotation(belowAbove.getA(), rotationMatrix),
+                RandomGaussianRotation.applyRotation(belowAbove.getB(), rotationMatrix)
             );
         }
 
         return OneBitScalarQuantizationState.builder()
-                .quantizationParams(quantizationParams)
-                .meanThresholds(meanThresholds)
-                .belowThresholdMeans(belowAbove.getA())
-                .aboveThresholdMeans(belowAbove.getB())
-                .averageL2L1Ratio(averageL2L1Ratio)
-                .rotationMatrix(rotationMatrix)
-                .build();
+            .quantizationParams(quantizationParams)
+            .meanThresholds(meanThresholds)
+            .belowThresholdMeans(belowAbove.getA())
+            .aboveThresholdMeans(belowAbove.getB())
+            .averageL2L1Ratio(averageL2L1Ratio)
+            .rotationMatrix(rotationMatrix)
+            .build();
     }
 
     // ========================= MULTI BIT ========================= //
@@ -88,10 +88,10 @@ class QuantizerHelper {
      * @throws IOException If vector retrieval fails.
      */
     static MultiBitScalarQuantizationState calculateQuantizationState(
-            TrainingRequest<float[]> trainingRequest,
-            int[] sampledIndices,
-            ScalarQuantizationParams quantizationParams,
-            int bitsPerCoordinate
+        TrainingRequest<float[]> trainingRequest,
+        int[] sampledIndices,
+        ScalarQuantizationParams quantizationParams,
+        int bitsPerCoordinate
     ) throws IOException {
         validateSampledIndices(sampledIndices);
 
@@ -110,23 +110,28 @@ class QuantizerHelper {
         }
 
         trainingRequest.resetVectorValues();
-        Pair<float[], float[]> belowAbove = calculateBelowAboveThresholdMeans(trainingRequest, thresholds, bitsPerCoordinate, sampledIndices);
+        Pair<float[], float[]> belowAbove = calculateBelowAboveThresholdMeans(
+            trainingRequest,
+            thresholds,
+            bitsPerCoordinate,
+            sampledIndices
+        );
 
         if (rotationMatrix != null) {
             belowAbove = new Pair<>(
-                    RandomGaussianRotation.applyRotation(belowAbove.getA(), rotationMatrix),
-                    RandomGaussianRotation.applyRotation(belowAbove.getB(), rotationMatrix)
+                RandomGaussianRotation.applyRotation(belowAbove.getA(), rotationMatrix),
+                RandomGaussianRotation.applyRotation(belowAbove.getB(), rotationMatrix)
             );
         }
 
         return MultiBitScalarQuantizationState.builder()
-                .quantizationParams(quantizationParams)
-                .thresholds(thresholds)
-                .belowThresholdMeans(belowAbove.getA())
-                .aboveThresholdMeans(belowAbove.getB())
-                .averageL2L1Ratio(meanL2L1.getB())
-                .rotationMatrix(rotationMatrix)
-                .build();
+            .quantizationParams(quantizationParams)
+            .thresholds(thresholds)
+            .belowThresholdMeans(belowAbove.getA())
+            .aboveThresholdMeans(belowAbove.getB())
+            .averageL2L1Ratio(meanL2L1.getB())
+            .rotationMatrix(rotationMatrix)
+            .build();
     }
 
     // ========================= INTERNAL HELPERS ========================= //
@@ -150,9 +155,7 @@ class QuantizerHelper {
      * @return A 2D float rotation matrix or null.
      */
     private static float[][] maybeApplyRotation(float[] baseVector, double l2l1Ratio) {
-        return l2l1Ratio > ROTATION_MATRIX_THRESHOLD
-                ? RandomGaussianRotation.generateRotationMatrix(baseVector.length)
-                : null;
+        return l2l1Ratio > ROTATION_MATRIX_THRESHOLD ? RandomGaussianRotation.generateRotationMatrix(baseVector.length) : null;
     }
 
     /**
@@ -187,9 +190,9 @@ class QuantizerHelper {
      * @throws IOException if vector access fails.
      */
     private static Pair<float[], float[]> calculateBelowAboveThresholdMeans(
-            TrainingRequest<float[]> request,
-            float[] thresholds,
-            int[] sampledIndices
+        TrainingRequest<float[]> request,
+        float[] thresholds,
+        int[] sampledIndices
     ) throws IOException {
         int dim = thresholds.length;
         float[] below = new float[dim], above = new float[dim];
@@ -231,10 +234,10 @@ class QuantizerHelper {
      * @throws IOException if vector access fails.
      */
     private static Pair<float[], float[]> calculateBelowAboveThresholdMeans(
-            TrainingRequest<float[]> request,
-            float[][] thresholds,
-            int bitsPerCoordinate,
-            int[] sampledIndices
+        TrainingRequest<float[]> request,
+        float[][] thresholds,
+        int bitsPerCoordinate,
+        int[] sampledIndices
     ) throws IOException {
         int dim = thresholds[0].length;
         float[] below = new float[dim], above = new float[dim];
@@ -246,7 +249,6 @@ class QuantizerHelper {
             if (vector == null) {
                 throw new IllegalArgumentException("Vector at sampled index " + docId + " is null.");
             }
-
 
             for (int d = 0; d < dim; d++) {
                 int quantBits = 0;
@@ -320,7 +322,8 @@ class QuantizerHelper {
      * @return Pair of (means[], average L2/L1 ratio).
      * @throws IOException if vector access fails.
      */
-    public static Pair<float[], Double> calculateMeanAndL2L1Ratio(TrainingRequest<float[]> request, int[] sampledIndices) throws IOException {
+    public static Pair<float[], Double> calculateMeanAndL2L1Ratio(TrainingRequest<float[]> request, int[] sampledIndices)
+        throws IOException {
         float[] mean = null;
         double totalL2L1 = 0.0;
         int n = sampledIndices.length;

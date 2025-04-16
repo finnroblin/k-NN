@@ -84,8 +84,12 @@ public final class MultiBitScalarQuantizationState implements QuantizationState 
         }
 
         if (Version.CURRENT.onOrAfter(Version.V_3_0_0)) {
-            out.writeOptionalArray(belowThresholdMeans != null ? new FloatArrayWrapper[]{new FloatArrayWrapper(belowThresholdMeans)} : null);
-            out.writeOptionalArray(aboveThresholdMeans != null ? new FloatArrayWrapper[]{new FloatArrayWrapper(aboveThresholdMeans)} : null);
+            out.writeOptionalArray(
+                belowThresholdMeans != null ? new FloatArrayWrapper[] { new FloatArrayWrapper(belowThresholdMeans) } : null
+            );
+            out.writeOptionalArray(
+                aboveThresholdMeans != null ? new FloatArrayWrapper[] { new FloatArrayWrapper(aboveThresholdMeans) } : null
+            );
             out.writeOptionalDouble(averageL2L1Ratio);
             if (rotationMatrix != null) {
                 out.writeBoolean(true);
