@@ -18,7 +18,6 @@
 #include "faiss/utils/hamming_distance/hamdis-inl.h"
 #include <vector>
 #include <iostream>
-#include <format>
 
 namespace knn_jni {
     namespace faiss_wrapper {
