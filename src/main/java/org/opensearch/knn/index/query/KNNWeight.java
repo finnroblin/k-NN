@@ -464,7 +464,8 @@ public class KNNWeight extends Weight {
             knnQuery.getField()
         );
         // TODO: Change type of vector once more quantization methods are supported
-        // final byte[] quantizedVector = SegmentLevelQuantizationUtil.quantizeVector(knnQuery.getQueryVector(), segmentLevelQuantizationInfo);
+        // final byte[] quantizedVector = SegmentLevelQuantizationUtil.quantizeVector(knnQuery.getQueryVector(),
+        // segmentLevelQuantizationInfo);
         byte[] quantizedVector = null;
 
         float[] transformedVector = null;
