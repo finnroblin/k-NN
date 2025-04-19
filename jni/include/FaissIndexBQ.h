@@ -18,6 +18,7 @@
 #include "faiss/utils/hamming_distance/hamdis-inl.h"
 #include <vector>
 #include <iostream>
+#include <cassert>
 
 namespace knn_jni {
     namespace faiss_wrapper {
@@ -26,162 +27,121 @@ namespace knn_jni {
             int dimension;
             size_t code_size;
             faiss::MetricType metric_type;
+            std::vector<std::vector<float>> lookup_table;
+            std::vector<float> coord_scores; // scores for each dimension
+            float correction_amount; // used in batched distances
 
             CustomerFlatCodesDistanceComputer(const uint8_t* codes, size_t code_size, int d, 
                 faiss::MetricType metric_type = faiss::METRIC_L2) 
-            // : FlatCodesDistanceComputer(codes, code_size), dimension(d), query(nullptr) {
                 : FlatCodesDistanceComputer(codes, code_size), dimension(d), query(nullptr), metric_type(metric_type) {
                 this->codes = codes;
                 this->code_size = code_size;
                 this->dimension = d;
+                correction_amount = 0.0f;
             }
 
-            float distance_to_code_l2(const uint8_t* code) {
-                 // L2 distance
-                float score = 0.0f;
-                for (int i = 0; i < dimension; i++) {
-                    uint8_t code_block = code[(i / 8)];
-                    int bit_offset = 7 - (i % 8);
-                    // int bit_offset = i % 8;
-                    int bit_mask = 1 << bit_offset;
-                    int code_masked = (code_block & bit_mask);
-                    int code_translated = code_masked >> bit_offset;
-
-                    // want to select the
-                    // std::cout << "bit_offset: " << bit_offset << std::endl;
-                    // std::cout << "bit_mask: " << bit_mask << std::endl;
-                    // std::cout << "code_masked: " << code_masked << std::endl;
-                    // std::cout << "code_translated: " << code_translated << std::endl;
-
-                    // Inner product
-                    // float dim_score = code_translated == 0 ? 0 : -1*query[i];
-
-                    // L2
-                    float dim_score = (code_translated - query[i]) * (code_translated - query[i]);
-
-                    score += dim_score;
+            float distance_to_code_batched(const uint8_t * code) {
+                float dist = 0.0f; // dist = this->query_correction;
+                for (int i = 0 ; i < dimension / 8; ++i) {
+                    const unsigned char code_batch = code[i];
+                    // std::cout << "access lookup table";
+                    dist += this->lookup_table[i][code_batch];
                 }
-                return score;
-                    
+
+                return dist + correction_amount; 
             }
-            float distance_to_code_IP(const uint8_t* code) {
-                // Inner product distance
-                float score = 0.0f;
-                for (int i = 0; i < dimension; i++) {
-                    uint8_t code_block = code[(i / 8)];
-                    int bit_offset = 7 - (i % 8);
-                    int bit_mask = 1 << bit_offset;
-                    int code_masked = (code_block & bit_mask);
-                    int code_translated = code_masked >> bit_offset;
-
-                    // want to select the
-                    // std::cout << "bit_offset: " << bit_offset << std::endl;
-                    // std::cout << "bit_mask: " << bit_mask << std::endl;
-                    // std::cout << "code_masked: " << code_masked << std::endl;
-                    // std::cout << "code_translated: " << code_translated << std::endl;
-
-                    // Inner product
-                    // float dim_score = code_translated == 0 ? 0 : -1*query[i];
-
-                    // inner product
-                    float dim_score = code_translated == 0 ? 0 : -1*query[i];
-                    // float dim_score = code_translated * query[i];
-
-                    score += dim_score;
-                }
-                return -score; // TODO weird things about negation in faiss and with innerproducts. 
-            };
 
             virtual float distance_to_code(const uint8_t* code) override {
-
-                // std::cout << "distance to code called, normalied query vector: ";
-
-                // for (int i = 0; i < this->dimension; i++) { 
-                //     std::cout << query[i] << " ";
-                // }
-
-                // std::cout << "\n END QUERY VECTOR \n";
-
-                // Compute the dot product between the 2
-                // TODO: How can we do this better for 2-bit and 4-bit
-                // I think we would want to just shift the multiplier of 1. i.e.
-                // -1 << 1 *query[i]
-                // -1 << 2 *query[i]
-                // -1 << 3 *query[i]
-                // Debug print first few values
-                // for (int i = 0; i < std::min(dimension, 32); i++) {
-                    // std::cout << "bit " << i << ": " 
-                            // << ((codes[i / 8] & (1 << (i % 8))) != 0) << std::endl;
-                // }
-                // std::cout << "called here\n\n\n";
-//                 float score = 0.0f;
-
-//                 // std::cout << " code: " << static_cast<int>(code[0]);
-//                 for (int i = 0; i < this->dimension; i++) {
-//                     // score += (code[(i / sizeof(uint8_t))] & (1 << (i % sizeof(uint8_t)))) == 0 ? -1 * query[i] * query[i] : -1 * (1- query[i]) * (1-query[i]);
-//                     // score += (code[(i / sizeof(uint8_t))] & (1 << (i % sizeof(uint8_t)))) == 0 ? 0 : -1*query[i];
-//                     // score += (code[(i / sizeof(uint8_t))] & (1 << (i % sizeof(uint8_t)))) == 0 ? query[i] * query[i] : (1- query[i]) * (1-query[i]);
-//                     // float code_val = (code[(i / 8)] & (1 << (i % 8))) ? 1.0f : 0.0f;
-//                     // float code_val = (code[(i / 8)] & (1 << (7 - (i % 8)))) ? 1.0f : 0.0f;
-//                 //    std::cout << ((code[(i / 8)] & (1 << (i % 8))) != 0);
-//                 //    if (i % 32 == 31) std::cout << "\n";
-//                     float code_val = (code[(i / 8)] & ((1 << (i % 8)))) ? 1.0f : 0.0f;
-//                     // score += 1 - 2 * (query[i] - code_val);
-//                     // score += (code[(i / 8)] & ((1 << (i % 8)))) == 0 ? (query[i] ) * (query[i]) : (query[i] - 1) * (query[i] - 1);
-//                     score += ((code[(i / 8)] & ((1 << (i % 8)))) >> (i % 8)) == 0 ? 0 : query[i];
-//                     // score += (code[(i / (8 * sizeof(uint8_t)))] & (1 << (i % (8 * sizeof(uint8_t))))) == 0 ? query[i] * query[i] : (1- query[i]) * (1-query[i]);
-//                 }
-// //                return std::sqrt(score);
-// //                std::cout << "score: " << score;
-//                 return score;
-    
-
     // TODO make this less hacky; we're going to change things to use innerproduct next. 
 
     // Might want a better test suite than the preexisting so that I can verify that innerproduct distances are correct.
     // probably just a float vector with 1s and 0s. Confirm that it's the same 
-                if (this->metric_type == faiss::METRIC_L2) {
-                    return distance_to_code_l2(code);
-                } else if (this->metric_type == faiss::METRIC_INNER_PRODUCT) {
-                    return distance_to_code_IP(code);
-                } else {
-std::cout << ("ADC distance computer called with unsupported metric, see faiss;:MetricType enum w metric" + std::to_string(this->metric_type)); // would be nice to have std::format w C++20....
-                    throw std::runtime_error(
-                        ("ADC distance computer called with unsupported metric, see faiss;:MetricType enum w metric" + std::to_string(this->metric_type)) // would be nice to have std::format w C++20....
-                    );
-                }
-   
-    // // Inner product distance
-    // float score = 0.0f;
-    // for (int i = 0; i < dimension; i++) {
-    //     uint8_t code_block = code[(i / 8)];
-    //     int bit_offset = 7 - (i % 8);
-    //     int bit_mask = 1 << bit_offset;
-    //     int code_masked = (code_block & bit_mask);
-    //     int code_translated = code_masked >> bit_offset;
-
-    //     // want to select the
-    //     // std::cout << "bit_offset: " << bit_offset << std::endl;
-    //     // std::cout << "bit_mask: " << bit_mask << std::endl;
-    //     // std::cout << "code_masked: " << code_masked << std::endl;
-    //     // std::cout << "code_translated: " << code_translated << std::endl;
-
-    //     // Inner product
-    //     // float dim_score = code_translated == 0 ? 0 : -1*query[i];
-
-    //     // inner product
-    //     float dim_score = code_translated == 0 ? 0 : -1*query[i];
-
-    //     score += dim_score;
-    // }
-    // return score; // TODO weird things about negation in faiss and with innerproducts. 
+                return distance_to_code_batched(code);
+    
+//     if (this->metric_type == faiss::METRIC_L2) {
+//                     return distance_to_code_l2_batched(code);
+//                 } else if (this->metric_type == faiss::METRIC_INNER_PRODUCT) {
+//                     return distance_to_code_IP(code);
+//                 } else {
+// std::cout << ("ADC distance computer called with unsupported metric, see faiss;:MetricType enum w metric" + std::to_string(this->metric_type)); // would be nice to have std::format w C++20....
+//                     throw std::runtime_error(
+//                         ("ADC distance computer called with unsupported metric, see faiss;:MetricType enum w metric" + std::to_string(this->metric_type)) // would be nice to have std::format w C++20....
+//                     );
+//                 }
 };
+
+            void compute_cord_scores() {
+                assert(this->query != nullptr); // make sure we've already set the query
+                this->coord_scores = std::vector<float>(this->dimension, 0.0f);
+                if (this->metric_type == faiss::METRIC_L2) {
+                    compute_cord_scores_l2(); // todo make this templated based on space type.
+                } else if (this->metric_type == faiss::METRIC_INNER_PRODUCT) {
+                    compute_cord_scores_inner_product(); 
+                }
+                
+                else {
+        std::cout << ("ADC distance computer called with unsupported metric, see faiss;:MetricType enum w metric" + std::to_string(this->metric_type)); // would be nice to have std::format w C++20....
+                            throw std::runtime_error(
+                                ("ADC distance computer called with unsupported metric, see faiss;:MetricType enum w metric" + std::to_string(this->metric_type)) // would be nice to have std::format w C++20....
+                            );
+                        }
+            }
+
+            void compute_cord_scores_l2() {
+                assert(query != nullptr);
+                for (int i = 0 ; i < this->dimension; ++i) {
+                    float x = query[i];
+                    this->coord_scores[i] = 1 - 2 * x;
+                    correction_amount += x * x;
+                }
+            }
+
+            void compute_cord_scores_inner_product() {
+                // assert(query != nullptr);
+                for (int i = 0 ; i < this->dimension; ++i) {
+                    // float x =;
+                    this->coord_scores[i] = query[i];
+                    // correction_amount += x * x;
+                }
+            }
 
 
 
             virtual void set_query(const float* x) override {
                 this->query = x;
+                compute_cord_scores();
+                create_batched_lookup_table();
             };
+            // compute all possible distance combinations for the batch at batch_idx against our query vector
+            void compute_per_batch_lookup(int batch_idx, std::vector<float> & batch) {
+                // assert(batch.size() == 256); // TODO magic constants 
+                // assert(this->query != nullptr); // make sure we've already set the query
+                // batch has 256 dimension, and it only looks at one 8-bit/1 byte chunk of the query vector.
+                for (int i = 0 ; i < 8; ++i) {
+                    const unsigned int bit_masked = 1 << i;
+                    const float bit_value = this->coord_scores[ batch_idx * 8 // for instance for batch_idx 1, this looks starting at position 7
+                      + (7 - i) // and then scans from right to left. TODO might not want this reversal...
+                    ]; // lookup the particular value if this bit is 1 from within the coord scores. 
+
+                    for (unsigned int suffix = 0; suffix < bit_masked; ++suffix) {
+                        batch[
+                            bit_masked | suffix // range from 0 to 255
+                        ] = batch[suffix] + bit_value;
+                    }
+
+                }
+            }
+
+            void create_batched_lookup_table() {
+                const unsigned int num_batches =this->dimension/8; // how many batches per vector
+                this->lookup_table = std::vector<std::vector<float>>( num_batches, std::vector<float>( 256, 0.0f));
+
+                    // [this->dimension/8][256]; // TODO magic constants
+                    
+                for (int i = 0 ; i < num_batches; ++i) {
+                    compute_per_batch_lookup(i, this->lookup_table[i]);
+                }
+            }
 
             virtual float symmetric_dis(faiss::idx_t i, faiss::idx_t j) override {
                 std::cout << " in hamming sym dist for some reason...";
@@ -218,7 +178,7 @@ std::cout << ("ADC distance computer called with unsupported metric, see faiss;:
                 // std::cout << "ntotal: " << this->ntotal << "\n";
                 // std::cout << "code sz: " << this->code_size << "\n" << std::endl;
                 // std::cout << "LOOK HERE!!!\n\n" << this->metric_type << "\n\nLOOK HERE!!!\n\n" << std::endl;
-            //    std::cout << this->d << "\n";
+            //    std::cout << this->d << "\n";f 
 
             //    for (uint8_t code : this->codes) {
             //        std::cout << static_cast<int>(code) << " ";
