@@ -160,6 +160,7 @@ BinaryIndexService::BinaryIndexService(std::unique_ptr<FaissMethods> _faissMetho
 }
 
 void BinaryIndexService::allocIndex(faiss::Index * index, size_t dim, size_t numVectors) {
+    std::cout << "allocating binary index with dimnesion " << std::to_string(dim) << " and vectors " << numVectors << std::endl;
     if (auto * indexBinaryHNSW = dynamic_cast<faiss::IndexBinaryHNSW *>(index)) {
         auto * indexBinaryFlat = dynamic_cast<faiss::IndexBinaryFlat *>(indexBinaryHNSW->storage);
         indexBinaryFlat->xb.reserve(dim * numVectors / 8);
@@ -213,7 +214,7 @@ void BinaryIndexService::insertToIndex(
     ) {
     // Read vectors from memory address (unique ptr since we want to remove from memory after use)
     std::vector<uint8_t> * inputVectors = reinterpret_cast<std::vector<uint8_t>*>(vectorsAddress);
-
+    std::cout << "inserting vectors to index with dimnesion " << std::to_string(dim) << " and vectors " << inputVectors->size() << std::endl;
     // The number of vectors can be int here because a lucene segment number of total docs never crosses INT_MAX value
     int numVectors = (int) (inputVectors->size() / (uint64_t) (dim / 8));
     if (numVectors == 0) {

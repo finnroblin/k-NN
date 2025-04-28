@@ -57,7 +57,7 @@ namespace knn_jni {
                 // std::cout << " above thres first elt " << this->above_threshold_means[0] << std::endl;
                 // std::cout << "this->correction_amoutn: " << std::to_string(this->correction_amount) << std::endl;
 
-                std::cout << "code size : " << this->code_size << " dimensions: " << this->dimension;
+                // std::cout << "code size : " << this->code_size << " dimensions: " << this->dimension;
                 this->partitions = std::vector<std::vector<float>>(
                     this->dimension, std::vector<float> (3 , 0.0f) // TODO magic constant
                 );
@@ -117,13 +117,15 @@ namespace knn_jni {
 
                         int code_entry = first_code_entry + second_code_entry;
 
+                        
                         if (code_entry == 0) { // 00
                             // distance += 0; // noop
                         }
                         else if (code_entry == 1) {// 01
                             
                             if (first_code_entry == 1) { // 10
-                                distance += second_z_val;
+                                // distance += second_z_val;
+                                distance += first_z_val;
                                 // std::cout << "invalid code for 2 bit unary qunatization (can't have 1 before 0), code: " 
                                 //     + std::to_string(first_code_entry) + std::to_string(second_code_entry) << " at idx " << code_byte_idx << " "
                                 //     << " first code bit " << first_code_bit << std::endl;
@@ -131,10 +133,11 @@ namespace knn_jni {
                                 //     + std::to_string(first_code_entry) + std::to_string(second_code_entry));
                             } else {
                                 // 01 
-                                distance += first_z_val;
-                                // std::cout << "okay code for 2 bit unary qunatization code: " 
-                                //     + std::to_string(first_code_entry) + std::to_string(second_code_entry) << " at idx " << code_byte_idx << " "
-                                //     << " first code bit " << first_code_bit << std::endl;
+                                // distance += first_z_val;
+                                distance += second_z_val;
+                                std::cout << "okay code for 2 bit unary qunatization code: " 
+                                    + std::to_string(first_code_entry) + std::to_string(second_code_entry) << " at idx " << code_byte_idx << " "
+                                    << " first code bit " << first_code_bit << std::endl;
                             }
                             
                         } 
@@ -501,7 +504,7 @@ namespace knn_jni {
             grand_parent->ntotal = this->ntotal;
         }
         faiss::FlatCodesDistanceComputer* get_FlatCodesDistanceComputer() const override {
-            std::cout << "faiss uq 2 bit distance computer  " << std::endl;
+            // std::cout << "faiss uq 2 bit distance computer  " << std::endl;
             return new knn_jni::faiss_wrapper::ADCFlatCodesDistanceComputer2Bit(
                 (const uint8_t *) (this->codes.data()), this->code_size, this->d, this->metric_type,
                 above_threshold_means, below_threshold_means

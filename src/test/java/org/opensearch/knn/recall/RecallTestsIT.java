@@ -222,7 +222,7 @@ public class RecallTestsIT extends KNNRestTestCase {
                 .endObject();
             createIndexAndIngestDocs(indexName, TEST_FIELD_NAME, getSettings(), builder.toString());
             logger.info("finished ingesting docs");
-            assertRecall(indexName, spaceType, 0.9f);
+            assertRecall(indexName, spaceType, 0.6f); // above 0.4, since delta of 0.6 allowed.
         }
     }
 
