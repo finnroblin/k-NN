@@ -49,13 +49,15 @@ namespace knn_jni {
                 // std::cout << "faiss uq 2 bit distance computer ctor  " << std::endl;
                 this->codes = codes;
                 this->code_size = code_size;
-                this->dimension = d;
+                this->dimension = d/2; // since the underlying index has dimension as 2 * vector_dim. 
                 this->correction_amount = 0.0f; 
                 this->above_threshold_means = above_threshold_means;
                 
                 this->below_threshold_means = below_threshold_means;
                 // std::cout << " above thres first elt " << this->above_threshold_means[0] << std::endl;
-                std::cout << "this->correction_amoutn: " << std::to_string(this->correction_amount) << std::endl;
+                // std::cout << "this->correction_amoutn: " << std::to_string(this->correction_amount) << std::endl;
+
+                std::cout << "code size : " << this->code_size << " dimensions: " << this->dimension;
                 this->partitions = std::vector<std::vector<float>>(
                     this->dimension, std::vector<float> (3 , 0.0f) // TODO magic constant
                 );
@@ -69,7 +71,7 @@ namespace knn_jni {
                     partitions[i][2] = y;
                 }
 
-                this->z = std::vector<float>(this->dimension, 0.0f ); // we want it to be d * 2
+                this->z = std::vector<float>(this->dimension*2, 0.0f ); // we want it to be d * 2
 
             }
 
@@ -82,21 +84,22 @@ namespace knn_jni {
                 // q * p = 4.0 
                 //
                 // return 0.0f;
-                std::cout << "z (sz) " << z.size() << "(distance to code): ";
-                for (int j = 0; j < (this->z).size(); ++j) {
-                    std::cout << this->z[j] << " ";
-                }
-                std::cout << std::endl;
+                // std::cout << "z (sz) " << z.size() << "(distance to code): ";
+                // for (int j = 0; j < (this->z).size(); ++j) {
+                //     std::cout << this->z[j] << " ";
+                // }
+                // std::cout << std::endl;
                 
                 // tbe java bit packing code sets the first bit for all dimensions, then the second bit for all dimensions, etc.
                 // 
                 // compute p dot z
                 float distance = 0.0f; 
                 for (int code_byte_idx = 0; code_byte_idx < this->dimension / 8; ++code_byte_idx) {
+                    // std::cout << "before code access " << std::endl;
                     uint8_t first_code_byte = code[code_byte_idx];
                     
                     // the matching bits for this document are at code_byte[code_bit], (code_byte+this->dimension/8)[code_bit] I think.
-
+// std::cout << "before second code access " << std::endl;
                     uint8_t second_code_byte = code[(this->dimension / 8) + code_byte_idx];
                     for (int first_code_bit = 0; first_code_bit < 8; ++first_code_bit) {
                         
@@ -104,6 +107,7 @@ namespace knn_jni {
                         int second_code_entry = (second_code_byte >> (7 - first_code_bit)) & 1;
 
                         int z_idx = code_byte_idx * 16 + first_code_bit * 2;
+                        // std::cout << "before first z access " << std::endl;
                         float first_z_val = z[
                             z_idx
                         ];
@@ -143,10 +147,10 @@ namespace knn_jni {
                         }
                     }
                 }
-                std::cout << "just before return " << std::endl;
-                std::cout << "distance: " << std::to_string(distance) << std::endl;
-                std::cout << "correction amount: " << std::to_string(this->correction_amount) << std::endl;
-                std::cout << "sum: " << std::to_string(distance + this->correction_amount) << std::endl;
+                // std::cout << "just before return " << std::endl;
+                // std::cout << "distance: " << std::to_string(distance) << std::endl;
+                // std::cout << "correction amount: " << std::to_string(this->correction_amount) << std::endl;
+                // std::cout << "sum: " << std::to_string(distance + this->correction_amount) << std::endl;
                 return distance + this->correction_amount;
 
 
@@ -199,7 +203,7 @@ namespace knn_jni {
             };
 
             void compute_z() {
-                std::cout << "this dimension: " << this->dimension << std::endl;
+                // std::cout << "this dimension: " << this->dimension << std::endl;
                 
                 this->z = std::vector(this->dimension * 2, 0.0f ); // reset z to be we want it to be d * 2
                 for (int i = 0 ; i < this->dimension; ++i) {
@@ -227,11 +231,11 @@ namespace knn_jni {
 
 
                 
-                std::cout << "z: ";
-                for (int j = 0; j < z.size(); ++j) {
-                    std::cout << z[j] << " ";
-                }
-                std::cout << std::endl;
+                // std::cout << "z: ";
+                // for (int j = 0; j < z.size(); ++j) {
+                //     std::cout << z[j] << " ";
+                // }
+                // std::cout << std::endl;
             }
 
             virtual void set_query(const float* x) override {
@@ -482,24 +486,24 @@ namespace knn_jni {
 
         FaissIndexUQ2Bit(
             faiss::idx_t d, std::vector<uint8_t> codes, faiss::MetricType metric=faiss::METRIC_L2, std::vector<float> above_threshold_mean_vector = std::vector<float>(), std::vector<float> below_threshold_mean_vector= std::vector<float>()
-        ) : IndexFlatCodes(d/4, d, metric){
+        ) : IndexFlatCodes(d/8, d, metric){
             std::cout << "faiss uq 2 bit ctor , dimension " << d << "."  << std::endl;
             this->codes = codes; 
-            this->code_size = (d/ 4);
+            this->code_size = (d/ 8);
             this->above_threshold_means = above_threshold_mean_vector;
             this->below_threshold_means = below_threshold_mean_vector;
         }
 
         void init(faiss::Index * parent, faiss::Index * grand_parent) {
             std::cout << "faiss uq 2 bit init  " << std::endl;
-            this->ntotal = this->codes.size() / (this->d / 4);
-            parent->ntotal = this->ntotal;   
+            this->ntotal = this->codes.size() / (this->d / 16); // n total: number of total vectors. should be codes.sz / 16. 
+            parent->ntotal = this->ntotal;
             grand_parent->ntotal = this->ntotal;
         }
         faiss::FlatCodesDistanceComputer* get_FlatCodesDistanceComputer() const override {
             std::cout << "faiss uq 2 bit distance computer  " << std::endl;
             return new knn_jni::faiss_wrapper::ADCFlatCodesDistanceComputer2Bit(
-                (const uint8_t *) (this->codes.data()), this->d/4, this->d, this->metric_type,
+                (const uint8_t *) (this->codes.data()), this->code_size, this->d, this->metric_type,
                 above_threshold_means, below_threshold_means
             );
 
