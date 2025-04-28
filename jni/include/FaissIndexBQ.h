@@ -22,6 +22,274 @@
 
 namespace knn_jni {
     namespace faiss_wrapper {
+
+        // here add 2 bit distance computer
+
+        struct ADCFlatCodesDistanceComputer2Bit : faiss::FlatCodesDistanceComputer {
+            const float* query;
+            int dimension;
+            size_t code_size;
+            faiss::MetricType metric_type;
+            std::vector<std::vector<float>> lookup_table; // used in batched distances
+            std::vector<float> coord_scores; // scores for each dimension
+            float correction_amount; // used in batched distances
+
+            std::vector<std::vector<float>> partitions;                
+            std::vector<float> above_threshold_means;
+            std::vector<float> below_threshold_means;
+
+            std::vector<float> z;
+            // TODO note: the dimension passed in from k-NN is the number of bits
+            // so for 2 bit quant, and 128 dimension vectors, d = 256. 
+            ADCFlatCodesDistanceComputer2Bit(const uint8_t * codes, size_t code_size, int d, faiss::MetricType metric_type = faiss::METRIC_L2,
+                std::vector<float> above_threshold_means = std::vector<float>()
+                , std::vector<float> below_threshold_means = std::vector<float>()
+            )
+            : FlatCodesDistanceComputer(codes, code_size), dimension(d), query(nullptr), metric_type(metric_type) {
+                // std::cout << "faiss uq 2 bit distance computer ctor  " << std::endl;
+                this->codes = codes;
+                this->code_size = code_size;
+                this->dimension = d;
+                this->correction_amount = 0.0f; 
+                this->above_threshold_means = above_threshold_means;
+                
+                this->below_threshold_means = below_threshold_means;
+                // std::cout << " above thres first elt " << this->above_threshold_means[0] << std::endl;
+                std::cout << "this->correction_amoutn: " << std::to_string(this->correction_amount) << std::endl;
+                this->partitions = std::vector<std::vector<float>>(
+                    this->dimension, std::vector<float> (3 , 0.0f) // TODO magic constant
+                );
+
+
+                for (int i = 0; i < this->dimension; ++i) {
+                    float x = below_threshold_means[i];
+                    float y = above_threshold_means[i]; 
+                    partitions[i][0] = x;
+                    partitions[i][1] = (x + y) / 2.0f;
+                    partitions[i][2] = y;
+                }
+
+                this->z = std::vector<float>(this->dimension, 0.0f ); // we want it to be d * 2
+
+            }
+
+            virtual float distance_to_code(const uint8_t* code) override {
+                // std::cout << " dist to code " << this->above_threshold_means[0] << std::endl;
+                // code has dimension * 2 bits. So (dimension * 2 / 8) bytes
+                // q: 2.0 -3.0 4.0 -9.0 
+                // p: 00 10
+                // d = 2
+                // q * p = 4.0 
+                //
+                // return 0.0f;
+                std::cout << "z (sz) " << z.size() << "(distance to code): ";
+                for (int j = 0; j < (this->z).size(); ++j) {
+                    std::cout << this->z[j] << " ";
+                }
+                std::cout << std::endl;
+                
+                // tbe java bit packing code sets the first bit for all dimensions, then the second bit for all dimensions, etc.
+                // 
+                // compute p dot z
+                float distance = 0.0f; 
+                for (int code_byte_idx = 0; code_byte_idx < this->dimension / 8; ++code_byte_idx) {
+                    uint8_t first_code_byte = code[code_byte_idx];
+                    
+                    // the matching bits for this document are at code_byte[code_bit], (code_byte+this->dimension/8)[code_bit] I think.
+
+                    uint8_t second_code_byte = code[(this->dimension / 8) + code_byte_idx];
+                    for (int first_code_bit = 0; first_code_bit < 8; ++first_code_bit) {
+                        
+                        int first_code_entry = (first_code_byte >> (7 - first_code_bit)) & 1;
+                        int second_code_entry = (second_code_byte >> (7 - first_code_bit)) & 1;
+
+                        int z_idx = code_byte_idx * 16 + first_code_bit * 2;
+                        float first_z_val = z[
+                            z_idx
+                        ];
+                        float second_z_val = z[
+                            z_idx + 1
+                        ];
+
+                        int code_entry = first_code_entry + second_code_entry;
+
+                        if (code_entry == 0) { // 00
+                            // distance += 0; // noop
+                        }
+                        else if (code_entry == 1) {// 01
+                            
+                            if (first_code_entry == 1) { // 10
+                                distance += second_z_val;
+                                // std::cout << "invalid code for 2 bit unary qunatization (can't have 1 before 0), code: " 
+                                //     + std::to_string(first_code_entry) + std::to_string(second_code_entry) << " at idx " << code_byte_idx << " "
+                                //     << " first code bit " << first_code_bit << std::endl;
+                                // throw std::runtime_error("invalid code for 2 bit unary qunatization (can't have 1 before 0), code: " 
+                                //     + std::to_string(first_code_entry) + std::to_string(second_code_entry));
+                            } else {
+                                // 01 
+                                distance += first_z_val;
+                                // std::cout << "okay code for 2 bit unary qunatization code: " 
+                                //     + std::to_string(first_code_entry) + std::to_string(second_code_entry) << " at idx " << code_byte_idx << " "
+                                //     << " first code bit " << first_code_bit << std::endl;
+                            }
+                            
+                        } 
+                        else if (code_entry == 2) { // 11
+                            distance += (first_z_val + second_z_val);
+                        }
+                        else {
+                            throw std::runtime_error("invalid code for 2 bit unary qunatization, code: " 
+                                + std::to_string(first_code_entry) + std::to_string(second_code_entry));
+                        }
+                    }
+                }
+                std::cout << "just before return " << std::endl;
+                std::cout << "distance: " << std::to_string(distance) << std::endl;
+                std::cout << "correction amount: " << std::to_string(this->correction_amount) << std::endl;
+                std::cout << "sum: " << std::to_string(distance + this->correction_amount) << std::endl;
+                return distance + this->correction_amount;
+
+
+
+
+                //     for (int bit_pair = 0; bit_pair < 4; ++bit_pair) {
+                        
+                //         int shift_amount = 6 - bit_pair * 2; // 6, 4, 2, 0
+                //         int code_entry = (code_byte >> shift_amount) & 0b11;
+
+
+                //         int byte_one;
+
+                //         int byte_two; // it's over by dimension/8 for 2 bit case
+
+                //         int dim_idx = code_byte_idx * 4 + bit_pair;
+                //         float a = z[dim_idx * 2];
+                //         float b = z[dim_idx * 2 + 1];
+                //         switch (code_entry) { //
+                //             case 0: // 00
+                //                 distance += 0;
+                //                 break;
+                //             case 1: // 01
+                //                 distance += a;
+                //                 // std::cout << "01 found" << std::endl;
+                //                 break;
+                //             case 3: // 11
+                //                 distance += (a + b);
+                //                 break;
+                //             case 2: // 10, not valid?
+                //                 throw std::runtime_error("invalid code for 2 bit unary qunatization, code: " + code_entry);
+                //                 distance += b;
+                //                 break;
+                //             default:
+
+                //                 // std::cout << " weird code called for code byte index " << code_byte_idx << " \n";
+                //                 std::string error_msg = "invalid code for 2 bit unary qunatization, code: " + std::to_string(code_entry);
+                //                 throw std::runtime_error(error_msg);
+                //                 break;
+                            
+                //         }
+
+                //         // code_byte = code_byte >> 2; // investigate next 2 bits
+                //     }
+                // }
+
+                // return dot_product + this->correction_amount;
+
+                // return distance + this->correction_amount;
+            };
+
+            void compute_z() {
+                std::cout << "this dimension: " << this->dimension << std::endl;
+                
+                this->z = std::vector(this->dimension * 2, 0.0f ); // reset z to be we want it to be d * 2
+                for (int i = 0 ; i < this->dimension; ++i) {
+                    // correction_amount +=  // first bit (additive error)
+                    // TODO make this more efficient with a good array access pattern after I get poc working.
+                    
+                    float c = this->query[i];
+                    float first_partition_distance = (c - this->partitions[i][0]) * (c - this->partitions[i][0]);
+
+                    float accumulator = first_partition_distance;
+
+                    this->correction_amount += first_partition_distance; 
+
+                    for (int partition_idx = 1; partition_idx < 3; partition_idx ++) { // TODO 
+                        float m = this->partitions[i][partition_idx];
+
+                        float v = (c - m) * (c - m);
+
+                        float d = v - accumulator;
+                        z[i * 2 + partition_idx-1] = d;
+                        
+                        accumulator += d;
+                    }
+                }
+
+
+                
+                std::cout << "z: ";
+                for (int j = 0; j < z.size(); ++j) {
+                    std::cout << z[j] << " ";
+                }
+                std::cout << std::endl;
+            }
+
+            virtual void set_query(const float* x) override {
+                // std::cout << " query set " << this->below_threshold_means[0] << std::endl;
+                this->correction_amount = 0.0f;
+                this->query = x;
+                // vcompute z                
+                compute_z();
+            };
+
+            virtual float symmetric_dis(faiss::idx_t i, faiss::idx_t j) override {
+                throw std::runtime_error("symmetric distance should not be called for the adc 2 bit distance computer during indexing time");
+            }
+        };
+
+
+
+        struct ADCFlatCodesDistanceComputer4Bit : faiss::FlatCodesDistanceComputer {
+            const float* query;
+            int dimension;
+            size_t code_size;
+            faiss::MetricType metric_type;
+            std::vector<std::vector<float>> lookup_table; // used in batched distances
+            std::vector<float> coord_scores; // scores for each dimension
+            float correction_amount; // used in batched distances
+
+            std::vector<std::vector<float>> partitions;                
+            std::vector<float> above_threshold_means;
+            std::vector<float> below_threshold_means;
+
+            ADCFlatCodesDistanceComputer4Bit(const uint8_t * codes, size_t code_size, int d, faiss::MetricType metric_type = faiss::METRIC_L2,
+                std::vector<float> above_threshold_means= std::vector<float>(), std::vector<float> below_threshold_means = std::vector<float>()
+            )
+            : FlatCodesDistanceComputer(codes, code_size), dimension(d), query(nullptr), metric_type(metric_type) {
+                this->codes = codes;
+                this->code_size = code_size;
+                this->dimension = d;
+                correction_amount = 0.0f; 
+
+            }
+
+            virtual float distance_to_code(const uint8_t* code) override {
+                return 0.0f;
+            };
+
+            virtual void set_query(const float* x) override {
+                correction_amount = 0.0f;
+                this->query = x;
+                // vcompute z
+                // here we need to calculate the partitions. 
+            };
+
+            virtual float symmetric_dis(faiss::idx_t i, faiss::idx_t j) override {
+                throw std::runtime_error("symmetric distance should not be called for the adc 2 bit distance computer during indexing time");
+            }
+        };
+
+
         struct CustomerFlatCodesDistanceComputer : faiss::FlatCodesDistanceComputer {
             const float* query;
             int dimension;
@@ -108,6 +376,7 @@ namespace knn_jni {
 
 
             virtual void set_query(const float* x) override {
+                correction_amount = 0.0f;
                 this->query = x;
                 compute_cord_scores();
                 create_batched_lookup_table();
@@ -204,6 +473,70 @@ namespace knn_jni {
                     //     IndexFlatCodes::search(n,x,k,distances,labels,params);
                     // };
         };
-    }
+    
+
+    struct FaissIndexUQ2Bit : faiss::IndexFlatCodes {
+        // as part of the input, pass in a partitions vector .
+        std::vector<float> above_threshold_means;
+        std::vector<float> below_threshold_means;
+
+        FaissIndexUQ2Bit(
+            faiss::idx_t d, std::vector<uint8_t> codes, faiss::MetricType metric=faiss::METRIC_L2, std::vector<float> above_threshold_mean_vector = std::vector<float>(), std::vector<float> below_threshold_mean_vector= std::vector<float>()
+        ) : IndexFlatCodes(d/4, d, metric){
+            std::cout << "faiss uq 2 bit ctor , dimension " << d << "."  << std::endl;
+            this->codes = codes; 
+            this->code_size = (d/ 4);
+            this->above_threshold_means = above_threshold_mean_vector;
+            this->below_threshold_means = below_threshold_mean_vector;
+        }
+
+        void init(faiss::Index * parent, faiss::Index * grand_parent) {
+            std::cout << "faiss uq 2 bit init  " << std::endl;
+            this->ntotal = this->codes.size() / (this->d / 4);
+            parent->ntotal = this->ntotal;   
+            grand_parent->ntotal = this->ntotal;
+        }
+        faiss::FlatCodesDistanceComputer* get_FlatCodesDistanceComputer() const override {
+            std::cout << "faiss uq 2 bit distance computer  " << std::endl;
+            return new knn_jni::faiss_wrapper::ADCFlatCodesDistanceComputer2Bit(
+                (const uint8_t *) (this->codes.data()), this->d/4, this->d, this->metric_type,
+                above_threshold_means, below_threshold_means
+            );
+
+        };
+
+
+    };
+
+    struct FaissIndexUQ4Bit : faiss::IndexFlatCodes {
+        std::vector<float> above_threshold_means;
+        std::vector<float> below_threshold_means;
+
+        FaissIndexUQ4Bit(
+            faiss::idx_t d, std::vector<uint8_t> codes, faiss::MetricType metric=faiss::METRIC_L2, std::vector<float> above_threshold_mean_vector= std::vector<float>(), std::vector<float> below_threshold_mean_vector= std::vector<float>()
+        ) : IndexFlatCodes(d/2, d, metric){
+            
+            this->codes = codes; 
+            this->code_size = (d/2);
+
+            this->above_threshold_means = above_threshold_mean_vector;
+            this->below_threshold_means = below_threshold_mean_vector;
+
+
+        }
+
+        void init(faiss::Index * parent, faiss::Index * grand_parent) {
+            this->ntotal = this->codes.size() / (this->d /2);
+            parent->ntotal = this->ntotal;   
+            grand_parent->ntotal = this->ntotal;
+        }
+        faiss::FlatCodesDistanceComputer* get_FlatCodesDistanceComputer() const override {
+            return new knn_jni::faiss_wrapper::ADCFlatCodesDistanceComputer4Bit(
+                (const uint8_t *) (this->codes.data()), this->d/2, this->d, this->metric_type,above_threshold_means, below_threshold_means
+            );
+
+        }
+    };
+}
 }
 #endif //KNNPLUGIN_JNI_FAISSINDEXBQ_H

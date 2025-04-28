@@ -200,19 +200,48 @@ public class JNIService {
             }
 
             if (IndexUtil.isADCEnabled(knnEngine, parameters)) {
+
+                // TODO here we can see if it's 2 or 4 bit quant.
+                return FaissService.loadIndexWithStreamADCParams(readStream, parameters);
+
                 // get space type and level of quantization here...
                 // then we can pass these to the ADC index.
                 // System.out.println(parameters);
 
                 // SpaceType spaceType = (SpaceType) parameters.get(KNNConstants.SPACE_TYPE);
-                String spaceTypeAsString = parameters.get(KNNConstants.SPACE_TYPE).toString();
-                // parameters.get(spaceType) and then see what the default is if we don't specify (i.e. see if by default, spaceType shows
-                // up)
-                // return FaissService.loadIndexWithStreamADC(readStream, parameters);
-                return FaissService.loadIndexWithStreamADC(readStream, spaceTypeAsString);
+                // String spaceTypeAsString = parameters.get(KNNConstants.SPACE_TYPE).toString();
+                // // parameters.get(spaceType) and then see what the default is if we don't specify (i.e. see if by default, spaceType
+                // shows
+                // // up)
+                // // return FaissService.loadIndexWithStreamADC(readStream, parameters);
+
+                // if (
+                // parameters.get("quantization_level").equals(
+                // ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.TWO_BIT)
+                // )
+                // ) {
+                // return FaissService.loadIndexWithStreamADCParams(readStream, parameters);
+
+                // // float * above_threshold_mean_vector = parameters.get("above_threshold_means");
+                // // float[] below_threshold_mean_vector = parameters.get("below_threshold_means");
+                // // return FaissService.loadIndexWithStreamADCTwoBit(readStream, spaceTypeAsString, above_threshold_means,
+                // below_threshold_means);
+                // // return TwoBit index ... here I think we're using scalar quantization but I'm not sure
+                // }
+                // else if (
+                // parameters.get("quantization_level").equals(
+                // ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.FOUR_BIT)
+                // )
+                // ) {
+                // float[] above_threshold_means = parameters.get("above_threshold_means");
+                // float[] below_threshold_means = parameters.get("below_threshold_means");
+                // return FaissService.loadIndexWithStreamADCTwoBit(readStream, spaceTypeAsString, above_threshold_means,
+                // below_threshold_means);
+                // }
+                // return FaissService.loadIndexWithStreamADC(readStream, spaceTypeAsString);
             }
 
-            return FaissService.loadIndexWithStream(readStream);
+            // return FaissService.loadIndexWithStream(readStream);
         } else if (KNNEngine.NMSLIB == knnEngine) {
             return NmslibService.loadIndexWithStream(readStream, parameters);
         }

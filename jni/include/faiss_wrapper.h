@@ -60,6 +60,11 @@ namespace knn_jni {
         // Returns a pointer of the loaded index
         jlong LoadIndexWithStreamADC(faiss::IOReader* ioReader, faiss::MetricType metricType);
 
+        jlong LoadIndexWithStreamADCAndParams(faiss::IOReader* ioReader, knn_jni::JNIUtilInterface * jniUtil, JNIEnv * env, jobject methodParamsJ);
+
+        jlong LoadIndexWithStreamADCUnary(faiss::IOReader* ioReader, faiss::MetricType metricType,
+            knn_jni::QuantizationLevel quantLevel, std::vector<float> above_threshold_mean_vector, std::vector<float> below_threshold_mean_vector
+        );
         // Load a binary index from indexPathJ into memory.
         //
         // Return a pointer to the loaded index

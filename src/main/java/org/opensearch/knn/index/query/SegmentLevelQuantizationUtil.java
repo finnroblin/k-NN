@@ -27,11 +27,30 @@ public class SegmentLevelQuantizationUtil {
     public static boolean isAdcEnabled(SegmentLevelQuantizationInfo segmentLevelQuantizationInfo) {
         // return true;
         // return false;
+        // here we have to change the triggering based on whether we're in one bit, two bit, 4 bit, etc.
+
         return segmentLevelQuantizationInfo != null
-            && ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.ONE_BIT)
-                .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier());
+            && (ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.ONE_BIT)
+                .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
+                
+                || ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.TWO_BIT)
+                    .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
+                || ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.FOUR_BIT)
+                    .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
+                    
+            );
     }
 
+    // public static float[] getAboveThresholdMeans(SegmentLevelQuantizationInfo segmentLevelQuantizationInfo) {
+    // return segmentLevelQuantizationInfo.quantizationState.getAboveThresholdMeans();
+    // }
+
+    // public static float[] getAboveThresholdMeans(SegmentLevelQuantizationInfo segmentLevelQuantizationInfo) {
+
+    // }
+    // public static String getQuantizationLevel(SegmentLevelQuantizationInfo segmentLevelQuantizationInfo) {
+    // return segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier();
+    // }
     /**
      * A simple function to convert a vector to a quantized vector for a segment.
      * @param vector array of float

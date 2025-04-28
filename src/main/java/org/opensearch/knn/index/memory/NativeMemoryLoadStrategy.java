@@ -86,6 +86,7 @@ public interface NativeMemoryLoadStrategy<T extends NativeMemoryAllocation, U ex
 
             // Try to open an index input then pass it down to native engine for loading an index.
             // open in NativeMemoryEntryContext takes care of opening the indexInput file
+            log.info("loading native index");
             if (!indexEntryContext.isIndexGraphFileOpened()) {
                 throw new IllegalStateException("Index [" + indexEntryContext.getOpenSearchIndexName() + "] is not preloaded");
             }

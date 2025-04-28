@@ -243,6 +243,17 @@ class FaissService {
     public static native long loadIndexWithStreamADC(IndexInputWithBuffer readStream, String spaceType);
     // Map<String, Object> parameters);
 
+    public static native long loadIndexWithStreamADCTwoBit(IndexInputWithBuffer readStream, Map<String, Object> parameters);
+    // String spaceType);
+
+    /*
+    params: spaceType: l2 or innerproduct
+    quantizationlevel
+     */
+    public static native long loadIndexWithStreamADCParams(IndexInputWithBuffer readStream, Map<String, Object> parameters);
+
+    public static native long loadIndexWithStreamADCFourBit(IndexInputWithBuffer readStream, String spaceType);
+
     /**
      * Load a binary index into memory
      *

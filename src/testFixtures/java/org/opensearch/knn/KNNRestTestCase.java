@@ -284,8 +284,9 @@ public class KNNRestTestCase extends ODFERestTestCase {
         request.addParameter("search_type", "query_then_fetch");
         // Nested field does not support explain parameter and the request is rejected if we set explain parameter
         // request.addParameter("explain", Boolean.toString(true));
-
+        logger.info("request: {}", request);
         Response response = client().performRequest(request);
+        logger.info("response: {}", response);
         assertEquals(request.getEndpoint() + ": failed", RestStatus.OK, RestStatus.fromCode(response.getStatusLine().getStatusCode()));
 
         return response;
@@ -1751,11 +1752,14 @@ public class KNNRestTestCase extends ODFERestTestCase {
         List<String> kVectors;
 
         for (int i = 0; i < queryVectors.length; i++) {
-
+            logger.info("finished query {}", i);
             KNNQueryBuilder knnQueryBuilderRecall = new KNNQueryBuilder(testField, queryVectors[i], k);
+            logger.info("after builder");
             Response respRecall = searchKNNIndex(testIndex, knnQueryBuilderRecall, k);
+            logger.info("after searn knn index");
             List<KNNResult> resultsRecall = parseSearchResponse(EntityUtils.toString(respRecall.getEntity()), testField);
-
+            logger.info("after searching...");
+            logger.info("resultsRecall.size(): {}, k: {}", resultsRecall.size(), k);
             assertEquals(resultsRecall.size(), k);
             kVectors = new ArrayList<>();
             for (KNNResult result : resultsRecall) {

@@ -7,6 +7,7 @@ package org.opensearch.knn.index.util;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
+
 import org.apache.commons.lang.StringUtils;
 import org.opensearch.Version;
 import org.opensearch.cluster.metadata.IndexMetadata;
@@ -45,6 +46,7 @@ import static org.opensearch.knn.common.KNNConstants.HNSW_ALGO_EF_SEARCH;
 import static org.opensearch.knn.common.KNNConstants.SPACE_TYPE;
 import static org.opensearch.knn.common.KNNConstants.VECTOR_DATA_TYPE_FIELD;
 import static org.opensearch.knn.index.query.parser.RescoreParser.RESCORE_PARAMETER;
+import org.opensearch.knn.quantization.models.quantizationState.MultiBitScalarQuantizationState;
 
 public class IndexUtil {
 
@@ -284,6 +286,21 @@ public class IndexUtil {
 
         if (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)) {
             loadParameters.put("adc_enabled", true);
+            loadParameters.put("quantization_level", segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier());
+            loadParameters.put(
+                "above_threshold_means",
+                ((MultiBitScalarQuantizationState) (segmentLevelQuantizationInfo.getQuantizationState())).getAboveThresholdMeans()
+            ); // TODO: refactor this so no dynamic cast...
+            loadParameters.put(
+                "below_threshold_means",
+                ((MultiBitScalarQuantizationState) segmentLevelQuantizationInfo.getQuantizationState()).getBelowThresholdMeans()
+            );
+            loadParameters.put("space_type", 
+                spaceType.getValue()
+            );
+
+            // here also pass the below and above thresholds, so that i can pass to faiss.
+            // loadParameters.put
         }
 
         return Collections.unmodifiableMap(loadParameters);

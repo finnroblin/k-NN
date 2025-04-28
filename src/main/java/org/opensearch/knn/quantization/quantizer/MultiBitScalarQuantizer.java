@@ -15,7 +15,6 @@ import org.opensearch.knn.quantization.models.requests.TrainingRequest;
 import org.opensearch.knn.quantization.sampler.Sampler;
 import org.opensearch.knn.quantization.sampler.SamplerType;
 import org.opensearch.knn.quantization.sampler.SamplingFactory;
-import oshi.util.tuples.Pair;
 
 import java.io.IOException;
 
@@ -112,12 +111,10 @@ public class MultiBitScalarQuantizer implements Quantizer<float[], byte[]> {
         int[] sampledIndices = sampler.sample(trainingRequest.getTotalNumberOfVectors(), samplingSize);
 
         ScalarQuantizationParams params = (bitsPerCoordinate == 2)
-                ? new ScalarQuantizationParams(ScalarQuantizationType.TWO_BIT)
-                : new ScalarQuantizationParams(ScalarQuantizationType.FOUR_BIT);
+            ? new ScalarQuantizationParams(ScalarQuantizationType.TWO_BIT)
+            : new ScalarQuantizationParams(ScalarQuantizationType.FOUR_BIT);
 
-        return QuantizerHelper.calculateQuantizationState(
-                trainingRequest, sampledIndices, params, bitsPerCoordinate
-        );
+        return QuantizerHelper.calculateQuantizationState(trainingRequest, sampledIndices, params, bitsPerCoordinate);
     }
 
     /**
@@ -166,6 +163,22 @@ public class MultiBitScalarQuantizer implements Quantizer<float[], byte[]> {
             }
         }
         return thresholds;
+    }
+
+    @Override
+    public void transform(float[] vector, final QuantizationState state) {
+        if (vector == null) {
+            return;
+        }
+        validateState(state);
+        MultiBitScalarQuantizationState multiBitState = (MultiBitScalarQuantizationState) state;
+        float[][] rotationMatrix = multiBitState.getRotationMatrix();
+        if (rotationMatrix != null) {
+            vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
+        }
+
+        // multiBitState.getAboveThresholdMeans()
+        // multiBitState.
     }
 
     /**

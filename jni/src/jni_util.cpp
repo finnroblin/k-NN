@@ -202,6 +202,38 @@ std::string knn_jni::JNIUtil::ConvertJavaStringToCppString(JNIEnv * env, jstring
     return cppString;
 }
 
+knn_jni::QuantizationLevel knn_jni::JNIUtil::ConvertJavaStringToQuantizationLevel(JNIEnv * env, jobject javaString) {
+    if (javaString == nullptr) {
+        throw std::runtime_error("String cannot be null");
+    }
+
+    const char *cString = env->GetStringUTFChars((jstring) javaString, nullptr);
+    if (cString == nullptr) {
+        this->HasExceptionInStack(env, "Unable to convert java string to cpp string");
+
+        // Will only reach here if there is no exception in the stack, but the call failed
+        throw std::runtime_error("Unable to convert java string to cpp string");
+    }
+    std::string cppString(cString);
+    env->ReleaseStringUTFChars((jstring) javaString, cString);
+
+    std::cout << "\n\n\n---- cppString --- " << cppString << "\n\n\n" << std::endl;
+
+    // TODO bulletproof this if any changes on Java side
+    if (cppString == "ScalarQuantizationParams_1") {
+        return QuantizationLevel::ONE_BIT;
+    } else if (cppString == "ScalarQuantizationParams_2") {
+        return QuantizationLevel::TWO_BIT;
+    } else if (cppString == "ScalarQuantizationParams_3") {
+        return QuantizationLevel::FOUR_BIT;
+    } else {
+        this->HasExceptionInStack(env, "Unable to convert java string to quantization level");
+
+        throw std::runtime_error("Unable to convert java string to quantization level");
+    }
+}
+
+
 int knn_jni::JNIUtil::ConvertJavaObjectToCppInteger(JNIEnv *env, jobject objectJ) {
 
     if (objectJ == nullptr) {

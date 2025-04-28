@@ -104,7 +104,7 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
         OneBitScalarQuantizationState binaryState = (OneBitScalarQuantizationState) state;
         float[][] rotationMatrix = binaryState.getRotationMatrix();
         if (rotationMatrix != null) {
-            RandomGaussianRotation.applyRotation(vector, rotationMatrix);
+            vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
         }
 
         for (int i = 0; i < vector.length; i++) {

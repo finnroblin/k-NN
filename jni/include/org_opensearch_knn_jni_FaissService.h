@@ -156,6 +156,9 @@ JNIEXPORT jlong JNICALL Java_org_opensearch_knn_jni_FaissService_loadBinaryIndex
 JNIEXPORT jlong JNICALL Java_org_opensearch_knn_jni_FaissService_loadIndexWithStreamADC
         (JNIEnv *, jclass, jobject, jstring);
 
+JNIEXPORT jlong JNICALL Java_org_opensearch_knn_jni_FaissService_loadIndexWithStreamADCParams
+        (JNIEnv *, jclass, jobject, jobject);
+        // (JNIEnv * env, jclass cls, jobject readStreamJ, jobject parametersJ) {
 /*
  * Class:     org_opensearch_knn_jni_FaissService
  * Method:    isSharedIndexStateRequired
