@@ -295,9 +295,7 @@ public class IndexUtil {
                 "below_threshold_means",
                 ((MultiBitScalarQuantizationState) segmentLevelQuantizationInfo.getQuantizationState()).getBelowThresholdMeans()
             );
-            loadParameters.put("space_type", 
-                spaceType.getValue()
-            );
+            loadParameters.put("space_type", spaceType.getValue());
 
             // here also pass the below and above thresholds, so that i can pass to faiss.
             // loadParameters.put

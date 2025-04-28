@@ -32,12 +32,12 @@ public class SegmentLevelQuantizationUtil {
         return segmentLevelQuantizationInfo != null
             && (ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.ONE_BIT)
                 .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
-                
+
                 || ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.TWO_BIT)
                     .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
                 || ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.FOUR_BIT)
                     .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
-                    
+
             );
     }
 

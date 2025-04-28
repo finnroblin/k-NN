@@ -112,7 +112,7 @@ public class MultiBitScalarQuantizerTests extends KNNTestCase {
         MultiBitScalarQuantizer quantizer = new MultiBitScalarQuantizer(2);
         float[] vector = { -2.5f, 1.5f, -0.5f, 4.0f, 6.5f, -3.5f, 0.0f, 7.2f };
         float[][] thresholds = {
-            { -3.0f, 1.0f, -1.0f, 3.5f, 5.0f, -4.0f,-0.5f, 7.0f },
+            { -3.0f, 1.0f, -1.0f, 3.5f, 5.0f, -4.0f, -0.5f, 7.0f },
             { -2.0f, 2.0f, 0.0f, 4.5f, 6.0f, -2.5f, 0.5f, 8.0f } };
 
         MultiBitScalarQuantizationState state = MultiBitScalarQuantizationState.builder()
@@ -135,13 +135,13 @@ public class MultiBitScalarQuantizerTests extends KNNTestCase {
         MultiBitScalarQuantizer quantizer = new MultiBitScalarQuantizer(2);
         float[] vector = { -4.0f, 1.5f, -0.5f, 4.0f, 6.5f, -3.5f, 0.0f, 7.2f };
         float[][] thresholds = {
-                { -3.0f, 1.0f, -1.0f, 3.5f, 5.0f, -4.0f,-0.5f, 7.0f },
-                { -2.0f, 2.0f, 0.0f, 4.5f, 6.0f, -2.5f, 0.5f, 8.0f } };
+            { -3.0f, 1.0f, -1.0f, 3.5f, 5.0f, -4.0f, -0.5f, 7.0f },
+            { -2.0f, 2.0f, 0.0f, 4.5f, 6.0f, -2.5f, 0.5f, 8.0f } };
 
         MultiBitScalarQuantizationState state = MultiBitScalarQuantizationState.builder()
-                .quantizationParams(new ScalarQuantizationParams(ScalarQuantizationType.TWO_BIT))
-                .thresholds(thresholds)
-                .build();
+            .quantizationParams(new ScalarQuantizationParams(ScalarQuantizationType.TWO_BIT))
+            .thresholds(thresholds)
+            .build();
 
         BinaryQuantizationOutput output = new BinaryQuantizationOutput(2);
         quantizer.quantize(vector, state, output);
@@ -151,8 +151,6 @@ public class MultiBitScalarQuantizerTests extends KNNTestCase {
         byte[] second = output.getQuantizedVector();
 
         assertSame(first, second); // 11 11 11 11 // 00 00 10 00
-
-
 
         // 01 11 11 11 // 00 00 10 00
         // 00 10 10 10 11 10 10 10
