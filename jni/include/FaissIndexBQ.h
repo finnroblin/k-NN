@@ -115,39 +115,46 @@ namespace knn_jni {
                             z_idx + 1
                         ];
 
-                        int code_entry = first_code_entry + second_code_entry;
+                        // int code_entry = first_code_entry + second_code_entry;
 
-                        
-                        if (code_entry == 0) { // 00
-                            // distance += 0; // noop
-                        }
-                        else if (code_entry == 1) {// 01
+                        if (first_code_entry == 1) {
                             
-                            if (first_code_entry == 1) { // 10
-                                // distance += second_z_val;
+                            if (second_code_entry == 0) { // 10
                                 distance += first_z_val;
-                                // std::cout << "invalid code for 2 bit unary qunatization (can't have 1 before 0), code: " 
-                                //     + std::to_string(first_code_entry) + std::to_string(second_code_entry) << " at idx " << code_byte_idx << " "
-                                //     << " first code bit " << first_code_bit << std::endl;
-                                // throw std::runtime_error("invalid code for 2 bit unary qunatization (can't have 1 before 0), code: " 
-                                //     + std::to_string(first_code_entry) + std::to_string(second_code_entry));
-                            } else {
-                                // 01 
-                                // distance += first_z_val;
-                                distance += second_z_val;
-                                std::cout << "okay code for 2 bit unary qunatization code: " 
-                                    + std::to_string(first_code_entry) + std::to_string(second_code_entry) << " at idx " << code_byte_idx << " "
-                                    << " first code bit " << first_code_bit << std::endl;
+                            } else { // 11
+                                distance += first_z_val + second_z_val;
                             }
+                        }
+                        // if (code_entry == 0) { // 00
+                            // distance += 0; // noop
+                        // }
+                        // else if (code_entry == 1) {// 01
                             
-                        } 
-                        else if (code_entry == 2) { // 11
-                            distance += (first_z_val + second_z_val);
-                        }
-                        else {
-                            throw std::runtime_error("invalid code for 2 bit unary qunatization, code: " 
-                                + std::to_string(first_code_entry) + std::to_string(second_code_entry));
-                        }
+                        //     if (first_code_entry == 1) { // 10
+                        //         // distance += second_z_val;
+                        //         distance += first_z_val;
+                        //         // std::cout << "invalid code for 2 bit unary qunatization (can't have 1 before 0), code: " 
+                        //         //     + std::to_string(first_code_entry) + std::to_string(second_code_entry) << " at idx " << code_byte_idx << " "
+                        //         //     << " first code bit " << first_code_bit << std::endl;
+                        //         // throw std::runtime_error("invalid code for 2 bit unary qunatization (can't have 1 before 0), code: " 
+                        //         //     + std::to_string(first_code_entry) + std::to_string(second_code_entry));
+                        //     } else {
+                        //         // 01 
+                        //         // distance += first_z_val;
+                        //         distance += second_z_val;
+                        //         std::cout << "okay code for 2 bit unary qunatization code: " 
+                        //             + std::to_string(first_code_entry) + std::to_string(second_code_entry) << " at idx " << code_byte_idx << " "
+                        //             << " first code bit " << first_code_bit << std::endl;
+                        //     }
+                            
+                        // } 
+                        // else if (code_entry == 2) { // 11
+                        //     distance += (first_z_val + second_z_val);
+                        // }
+                        // else {
+                        //     throw std::runtime_error("invalid code for 2 bit unary qunatization, code: " 
+                        //         + std::to_string(first_code_entry) + std::to_string(second_code_entry));
+                        // }
                     }
                 }
                 // std::cout << "just before return " << std::endl;
@@ -207,8 +214,8 @@ namespace knn_jni {
 
             void compute_z() {
                 // std::cout << "this dimension: " << this->dimension << std::endl;
-                
-                this->z = std::vector(this->dimension * 2, 0.0f ); // reset z to be we want it to be d * 2
+                std::fill(z.begin(), z.end(), 0.0f);
+                // this->z = std::vector(this->dimension * 2, 0.0f ); // reset z to be we want it to be d * 2
                 for (int i = 0 ; i < this->dimension; ++i) {
                     // correction_amount +=  // first bit (additive error)
                     // TODO make this more efficient with a good array access pattern after I get poc working.
@@ -490,7 +497,7 @@ namespace knn_jni {
         FaissIndexUQ2Bit(
             faiss::idx_t d, std::vector<uint8_t> codes, faiss::MetricType metric=faiss::METRIC_L2, std::vector<float> above_threshold_mean_vector = std::vector<float>(), std::vector<float> below_threshold_mean_vector= std::vector<float>()
         ) : IndexFlatCodes(d/8, d, metric){
-            std::cout << "faiss uq 2 bit ctor , dimension " << d << "."  << std::endl;
+            // std::cout << "faiss uq 2 bit ctor , dimension " << d << "."  << std::endl;
             this->codes = codes; 
             this->code_size = (d/ 8);
             this->above_threshold_means = above_threshold_mean_vector;
@@ -498,7 +505,7 @@ namespace knn_jni {
         }
 
         void init(faiss::Index * parent, faiss::Index * grand_parent) {
-            std::cout << "faiss uq 2 bit init  " << std::endl;
+            // std::cout << "faiss uq 2 bit init  " << std::endl;
             this->ntotal = this->codes.size() / (this->d / 16); // n total: number of total vectors. should be codes.sz / 16. 
             parent->ntotal = this->ntotal;
             grand_parent->ntotal = this->ntotal;

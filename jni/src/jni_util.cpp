@@ -217,7 +217,7 @@ knn_jni::QuantizationLevel knn_jni::JNIUtil::ConvertJavaStringToQuantizationLeve
     std::string cppString(cString);
     env->ReleaseStringUTFChars((jstring) javaString, cString);
 
-    std::cout << "\n\n\n---- cppString --- " << cppString << "\n\n\n" << std::endl;
+    // std::cout << "\n\n\n---- cppString --- " << cppString << "\n\n\n" << std::endl;
 
     // TODO bulletproof this if any changes on Java side
     if (cppString == "ScalarQuantizationParams_1") {
