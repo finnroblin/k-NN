@@ -496,7 +496,7 @@ jlong knn_jni::faiss_wrapper::LoadIndexWithStreamADCAndParams(faiss::IOReader* i
     
             return knn_jni::faiss_wrapper::LoadIndexWithStreamADC(ioReader, metricType);
     } else if (
-        quantLevel == knn_jni::QuantizationLevel::TWO_BIT
+        quantLevel == knn_jni::QuantizationLevel::TWO_BIT || quantLevel == knn_jni::QuantizationLevel::FOUR_BIT
     )    {
         // get below threshold means here
         // TODO refactor into a cleaner function...
@@ -505,14 +505,14 @@ jlong knn_jni::faiss_wrapper::LoadIndexWithStreamADCAndParams(faiss::IOReader* i
         float* above_threshold_mean_float_array = nullptr;
         size_t thresholds_length = 0;
         if (above_threshold_means_it != methodParams.end()) {
-            // std::cout << "before threshold length " << std::endl;
+            std::cout << "before threshold length " << std::endl;
             thresholds_length = jniUtil->GetJavaFloatArrayLength(env,(jfloatArray)  above_threshold_means_it->second);
-            // std::cout << "after threshold length, length: " << thresholds_length << std::endl;
+            std::cout << "after threshold length, length: " << thresholds_length << std::endl;
             above_threshold_mean_float_array = jniUtil->GetFloatArrayElements(
                 env, (jfloatArray) above_threshold_means_it->second, nullptr 
             );
-            // std::cout << "after threshold array " << std::endl;
-            // std::cout << "first element of the array " << *above_threshold_mean_float_array << " " << std::endl; 
+            std::cout << "after threshold array " << std::endl;
+            std::cout << "first element of the array " << *above_threshold_mean_float_array << " " << std::endl; 
         } 
 
         auto below_threshold_means_it = methodParams.find("below_threshold_means");
@@ -521,46 +521,46 @@ jlong knn_jni::faiss_wrapper::LoadIndexWithStreamADCAndParams(faiss::IOReader* i
             below_threshold_mean_float_array = jniUtil->GetFloatArrayElements(
                 env, (jfloatArray) below_threshold_means_it->second, nullptr 
             );
-            // std::cout << "after below threshold array " << std::endl;
+            std::cout << "after below threshold array " << std::endl;
 
         }
         
         
         std::vector<float> above_threshold_mean_vector(above_threshold_mean_float_array, above_threshold_mean_float_array + thresholds_length);
         
-        // std::cout << "after above threshold vector " << std::endl;
+        std::cout << "after above threshold vector " << std::endl;
 
         std::vector<float> below_threshold_mean_vector(below_threshold_mean_float_array, below_threshold_mean_float_array + thresholds_length);
         
-        // std::cout << "after below threshold vector " << std::endl;
+        std::cout << "after below threshold vector " << std::endl;
         // TODO: storage duration of above and below threshold means
         return LoadIndexWithStreamADCUnary(ioReader, metricType, quantLevel, above_threshold_mean_vector, below_threshold_mean_vector); // here also pass in the quantizationlevel 
 
     }
-    else if (quantLevel == knn_jni::QuantizationLevel::FOUR_BIT) {
-        auto above_threshold_means_it = methodParams.find("above_threshold_means");
-        float* above_threshold_mean_float_array = nullptr;
-        size_t thresholds_length = 0;
-        if (above_threshold_means_it != methodParams.end()) {
-            thresholds_length = jniUtil->GetJavaFloatArrayLength(env,(jfloatArray)  above_threshold_means_it->second);
-            float* above_threshold_mean_float_array = jniUtil->GetFloatArrayElements(
-                env, (jfloatArray) above_threshold_means_it->second, nullptr 
-            );
-        } 
+    // else if (quantLevel == knn_jni::QuantizationLevel::FOUR_BIT) {
+    //     auto above_threshold_means_it = methodParams.find("above_threshold_means");
+    //     float* above_threshold_mean_float_array = nullptr;
+    //     size_t thresholds_length = 0;
+    //     if (above_threshold_means_it != methodParams.end()) {
+    //         thresholds_length = jniUtil->GetJavaFloatArrayLength(env,(jfloatArray)  above_threshold_means_it->second);
+    //         above_threshold_mean_float_array = jniUtil->GetFloatArrayElements(
+    //             env, (jfloatArray) above_threshold_means_it->second, nullptr 
+    //         );
+    //     } 
 
-        auto below_threshold_means_it = methodParams.find("below_threshold_means");
-        float* below_threshold_mean_float_array = nullptr;
-        if (below_threshold_means_it != methodParams.end()) {
-            float* below_threshold_mean_float_array = jniUtil->GetFloatArrayElements(
-                env, (jfloatArray) below_threshold_means_it->second, nullptr 
-            );
-        }
+    //     auto below_threshold_means_it = methodParams.find("below_threshold_means");
+    //     float* below_threshold_mean_float_array = nullptr;
+    //     if (below_threshold_means_it != methodParams.end()) {
+    //         below_threshold_mean_float_array = jniUtil->GetFloatArrayElements(
+    //             env, (jfloatArray) below_threshold_means_it->second, nullptr 
+    //         );
+    //     }
         
-        std::vector<float> above_threshold_mean_vector(above_threshold_mean_float_array, above_threshold_mean_float_array + thresholds_length);
-        std::vector<float> below_threshold_mean_vector(below_threshold_mean_float_array, below_threshold_mean_float_array + thresholds_length);
+    //     std::vector<float> above_threshold_mean_vector(above_threshold_mean_float_array, above_threshold_mean_float_array + thresholds_length);
+    //     std::vector<float> below_threshold_mean_vector(below_threshold_mean_float_array, below_threshold_mean_float_array + thresholds_length);
 
-        return LoadIndexWithStreamADCUnary(ioReader, metricType, quantLevel, above_threshold_mean_vector, below_threshold_mean_vector);
-    } else {
+    //     return LoadIndexWithStreamADCUnary(ioReader, metricType, quantLevel, above_threshold_mean_vector, below_threshold_mean_vector);
+    else {
         jniUtil->HasExceptionInStack(env, "load adc stream called without a quantization level");
         throw std::runtime_error("load adc stream called without a quantization level");
     }
@@ -617,7 +617,7 @@ jlong knn_jni::faiss_wrapper::LoadIndexWithStreamADCUnary(faiss::IOReader* ioRea
 
         FaissIndexUQ4Bit * alteredStorage= nullptr;
         alteredStorage = new FaissIndexUQ4Bit(
-            indexReader->d, codes, metricType
+            indexReader->d, codes, metricType, above_threshold_mean_vector, below_threshold_mean_vector
         );
         
             // indexReader->metric_type);

@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static org.junit.Assert.assertEquals;
 import static org.opensearch.knn.common.KNNConstants.COMPRESSION_LEVEL_PARAMETER;
 import static org.opensearch.knn.common.KNNConstants.DIMENSION;
 import static org.opensearch.knn.common.KNNConstants.ENCODER_PARAMETER_PQ_CODE_SIZE;
@@ -222,6 +223,65 @@ public class RecallTestsIT extends KNNRestTestCase {
                 .endObject();
             createIndexAndIngestDocs(indexName, TEST_FIELD_NAME, getSettings(), builder.toString());
             logger.info("finished ingesting docs");
+            assertRecall(indexName, spaceType, 0.6f); // above 0.4, since delta of 0.6 allowed.
+        }
+    }
+
+    /**
+     * {
+     * 	"properties": {
+     *     {
+     *      "type": "knn_vector",
+     *      "dimension": {TEST_DIMENSION},
+     *      "method": {
+     *          "name":"hnsw",
+     *          "engine":"faiss",
+     *          "space_type": "{SPACE_TYPE}",
+     *          "parameters":{
+     *              "m":{HNSW_M},
+     *              "ef_construction": {HNSW_EF_CONSTRUCTION},
+     *              "ef_search": {HNSW_EF_SEARCH},
+     *              "mode": "on_disk"
+     *          },
+     *          "compression_level" : "8x"
+
+     *       }
+     *     }
+     *   }
+     * }
+     */
+    @SneakyThrows
+    public void testRecall_whenADCEnabledAnd2Bit_thenRecallAbove40Percent() {
+        List<SpaceType> spaceTypes = List.of(SpaceType.L2 // TODO: only l2 is supported at this point. 
+        // , SpaceType.INNER_PRODUCT
+        );
+        // List<SpaceType> spaceTypes = List.of(SpaceType.L2);
+        for (SpaceType spaceType : spaceTypes) {
+            String indexName = createIndexName(KNNEngine.FAISS, spaceType);
+            XContentBuilder builder = XContentFactory.jsonBuilder()
+                .startObject()
+                .startObject(PROPERTIES_FIELD)
+                .startObject(TEST_FIELD_NAME)
+                .field(TYPE, TYPE_KNN_VECTOR)
+                .field(DIMENSION, TEST_DIMENSION)
+                .field(MODE_PARAMETER, ON_DISK)
+                .field(COMPRESSION_LEVEL_PARAMETER, CompressionLevel.x8.getName())
+                .startObject(KNN_METHOD)
+                .field(METHOD_PARAMETER_SPACE_TYPE, spaceType.getValue())
+                .field(KNN_ENGINE, KNNEngine.FAISS.getName())
+                .field(NAME, METHOD_HNSW)
+                .startObject(PARAMETERS)
+                .field(METHOD_PARAMETER_EF_CONSTRUCTION, HNSW_EF_CONSTRUCTION)
+                .field(METHOD_PARAMETER_M, HNSW_M)
+                .field(METHOD_PARAMETER_EF_SEARCH, 100)
+
+                .endObject() // parameters
+                .endObject()
+                .endObject()
+                .endObject()
+                .endObject();
+            createIndexAndIngestDocs(indexName, TEST_FIELD_NAME, getSettings(), builder.toString());
+            // logger.info("finished ingesting docs");
             assertRecall(indexName, spaceType, 0.6f); // above 0.4, since delta of 0.6 allowed.
         }
     }

@@ -189,6 +189,134 @@ TEST(FaissIndexBQTest, BaselineCheck) {
     std::cout << "score: " << score << std::endl;
 }
 
+TEST(FaissIndexUQTest, LoadStreamTest) {
+
+}
+TEST(FaissIndexUQTest, Check4BitDistances) {
+    /*
+    sanity check from python:
+    Z vector: [ -8.75   3.75  16.25  28.75 -11.25   1.25  13.75  26.25 -13.75  -1.25
+  11.25  23.75 -16.25  -3.75   8.75  21.25   1.25  13.75  26.25  38.75
+  -1.25  11.25  23.75  36.25  -3.75   8.75  21.25  33.75  -6.25   6.25
+  18.75  31.25  11.25  23.75  36.25  48.75   8.75  21.25  33.75  46.25
+   6.25  18.75  31.25  43.75   3.75  16.25  28.75  41.25  21.25  33.75
+  46.25  58.75  18.75  31.25  43.75  56.25  16.25  28.75  41.25  53.75
+  13.75  26.25  38.75  51.25]
+Additive error: 94.0
+
+ADC Distance Results:
+--------------------------------------------------------------------------------
+Vector 1: dot product = 131.250000, distance = 225.250000
+  Bit pattern interpretation:
+  Dim  0: 1000 → -2.50
+  Dim  1: 0100 → -2.00
+  Dim  2: 1110 → 3.50
+  Dim  3: 1111 → 6.50
+  Dim  4: 1000 → -0.50
+  Dim  5: 0000 → -2.50
+  Dim  6: 1110 → 5.50
+  Dim  7: 1111 → 8.50
+  Dim  8: 1000 → 1.50
+  Dim  9: 0000 → -0.50
+  Dim 10: 1000 → 2.50
+  Dim 11: 0000 → 0.50
+  Dim 12: 1000 → 3.50
+  Dim 13: 0000 → 1.50
+  Dim 14: 1000 → 4.50
+  Dim 15: 0000 → 2.50
+
+Vector 2: dot product = 112.500000, distance = 206.500000
+  Bit pattern interpretation:
+  Dim  0: 1110 → 2.50
+  Dim  1: 1100 → 0.50
+  Dim  2: 0000 → -4.00
+  Dim  3: 0000 → -3.50
+  Dim  4: 1000 → -0.50
+  Dim  5: 1000 → 0.00
+  Dim  6: 0000 → -2.00
+  Dim  7: 0000 → -1.50
+  Dim  8: 1110 → 6.50
+  Dim  9: 1100 → 4.50
+  Dim 10: 1000 → 2.50
+  Dim 11: 1000 → 3.00
+  Dim 12: 0000 → 1.00
+  Dim 13: 0000 → 1.50
+  Dim 14: 0000 → 2.00
+  Dim 15: 0000 → 2.50
+    
+    */
+
+
+    int dim = 16; // Each dimension uses 4 bits now
+    faiss::MetricType metric = faiss::METRIC_L2;
+
+    // For 4-bit encoding with 16 dimensions:
+    // - Each vector needs 4 bytes per bit position (16 dims / 8 bits per byte = 2 bytes)
+    // - We need 4 bit positions, so total of 4 × 4 = 16 bytes per vector
+    
+    // Creating two test vectors with valid 4-bit unary encoding patterns:
+    // Vector 1: Mix of different patterns (0000, 1000, 1100, 1110, 1111)
+    // Vector 2: Different mix of patterns
+    std::vector<uint8_t> codes = {
+        // Vector 1 - First bit for all dimensions
+        0b10111011, 0b10101010,
+        // Vector 1 - Second bit for all dimensions  
+        0b00110011, 0b00000000,
+        // Vector 1 - Third bit for all dimensions
+        0b00110011, 0b00000000,
+        // Vector 1 - Fourth bit for all dimensions
+        0b00010001, 0b00000000,
+        
+        // // Vector 2 - First bit for all dimensions
+        // 0b11001100, 0b11110000,
+        // // Vector 2 - Second bit for all dimensions
+        // 0b11000000, 0b11000000,
+        // // Vector 2 - Third bit for all dimensions
+        // 0b10000000, 0b10000000,
+        // // Vector 2 - Fourth bit for all dimensions
+        // 0b00000000, 0b00000000
+    };
+
+    std::vector<float> query(16, 0.0f);
+    for (int i = 0; i < 16; i++) {
+        query[i] = (i % 4) - 2.0f; // Simple pattern for query: -2, -1, 0, 1, -2, -1, ...
+    }
+
+    std::vector<float> below_threshold_means(16, -5.0f);
+    for (int i = 0; i < 16; i++) {
+        below_threshold_means[i] += i * 0.5f; // Simple pattern: -5, -4.5, -4, ...
+    }
+
+    // Create above_threshold_means as below_threshold_means + 10
+    std::vector<float> above_threshold_means(16);
+    std::transform(below_threshold_means.begin(), below_threshold_means.end(), above_threshold_means.begin(),
+        [](float x) { return x + 10.0f; }
+    );
+
+    // Create index with 4-bit encoding instead of 2-bit
+    knn_jni::faiss_wrapper::FaissIndexUQ4Bit index = knn_jni::faiss_wrapper::FaissIndexUQ4Bit(
+        dim*4, codes, metric, above_threshold_means, below_threshold_means
+    );
+
+    knn_jni::faiss_wrapper::ADCFlatCodesDistanceComputer4Bit * computer_ptr = 
+        (knn_jni::faiss_wrapper::ADCFlatCodesDistanceComputer4Bit *) index.get_FlatCodesDistanceComputer();
+
+    computer_ptr->set_query(query.data());
+    // for (int i =0 ; i < dim; ++i ) computer_ptr->z 
+    std::vector<float> distances;
+
+    // For 4-bit encoding, each vector is 16 bytes (4 bytes per bit position × 4 bit positions)
+    for (int i = 0; i < 1; i++) {
+        distances.push_back(
+            computer_ptr->distance_to_code_unbatched(&codes[i * 16])
+        );
+    }
+
+    // Output distances for verification
+    for (int j = 0; j < distances.size(); j++) {
+        std::cout << "Vector " << j << " distance: " << distances[j] << std::endl;
+    }
+}
 TEST(FaissIndexUQTest, BatchedCheckSameAsBefore16Dim) {
     int dim = 16; // so each code should be 2 bytes, each query vector has 8 floats
     faiss::MetricType metric = faiss::METRIC_L2;

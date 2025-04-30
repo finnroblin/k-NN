@@ -259,7 +259,7 @@ namespace knn_jni {
 
 
 
-        struct ADCFlatCodesDistanceComputer4Bit : faiss::FlatCodesDistanceComputer {
+        struct ADCFlatCodesDistanceComputer4Bit : faiss::FlatCodesDistanceComputer {            
             const float* query;
             int dimension;
             size_t code_size;
@@ -272,19 +272,60 @@ namespace knn_jni {
             std::vector<float> above_threshold_means;
             std::vector<float> below_threshold_means;
 
+            std::vector<float> z;
+            const int BATCH_SZ = 8; // probably needs to be powers of 8 since then it's grabbing a whole byte.
+            // const int BATCH_SZ = 16;
+            const int NUM_BATCHES = 0; // overridden in initializer list
+
+            // TODO note: the dimension passed in from k-NN is the number of bits
+            // so for 2 bit quant, and 128 dimension vectors, d = 256. 
+ 
+            const int BIT_SZ = 4;
+
             ADCFlatCodesDistanceComputer4Bit(const uint8_t * codes, size_t code_size, int d, faiss::MetricType metric_type = faiss::METRIC_L2,
                 std::vector<float> above_threshold_means= std::vector<float>(), std::vector<float> below_threshold_means = std::vector<float>()
             )
-            : FlatCodesDistanceComputer(codes, code_size), dimension(d), query(nullptr), metric_type(metric_type) {
+
+        : FlatCodesDistanceComputer(codes, code_size), dimension(d), query(nullptr), metric_type(metric_type), NUM_BATCHES((d / 2) / BATCH_SZ ) {
+            // : FlatCodesDistanceComputer(codes, code_size), dimension(d), query(nullptr), metric_type(metric_type) {
+                // std::cout << "faiss uq 4 bit distance computer ctor  " << std::endl;
                 this->codes = codes;
                 this->code_size = code_size;
-                this->dimension = d;
+                this->dimension = d/BIT_SZ;
                 correction_amount = 0.0f; 
+                
+                this->above_threshold_means = above_threshold_means;
+                this->below_threshold_means = below_threshold_means;
 
+                this->partitions = std::vector<std::vector<float>>(
+                    this->dimension, std::vector<float> ((BIT_SZ+1) , 0.0f) // d x (b + 1)
+                );
+
+                // Fill the partitions vector with interpolated values
+// 
+                // std::cout << "faiss uq 4 bit distance computer ctor  " << std::endl;
+
+                for (int i = 0; i < this->dimension; ++i) {
+                    // std::cout << "above/below trhes" << std::endl;
+                    float x = below_threshold_means[i];
+                    float y = above_threshold_means[i]; 
+                    
+                    for (int j = 0; j <= BIT_SZ; ++j) {
+                        // For each possible count of 1s (from 0 to BIT_SZ),
+                        // linearly interpolate between x and y
+
+                        // std::cout << "lin interpolation" << std::endl;
+                        partitions[i][j] = ((BIT_SZ - j) * x + j * y) / static_cast<float>(BIT_SZ);
+                    }
+                }
+                // std::cout << "after interplt" << std::endl;
+
+                this->z = std::vector<float>(this->dimension * BIT_SZ, 0.0f);
             }
 
             virtual float distance_to_code(const uint8_t* code) override {
-                return 0.0f;
+                // return 0.0f;
+                return distance_to_code_unbatched(code);
             };
 
             virtual void set_query(const float* x) override {
@@ -292,7 +333,94 @@ namespace knn_jni {
                 this->query = x;
                 // vcompute z
                 // here we need to calculate the partitions. 
+                compute_z();
             };
+
+            float distance_to_code_unbatched(const uint8_t* code) {
+                // tbe java bit packing code sets the first bit for all dimensions, then the second bit for all dimensions, etc.
+                // compute p dot z
+                float distance = 0.0f;
+                
+                // const int num_bits = 4; // Now using 4 bits instead of 2
+                
+                for (int code_byte_idx = 0; code_byte_idx < this->dimension / 8; ++code_byte_idx) {
+                    // Get all code bytes for this byte index
+                    uint8_t code_bytes[BIT_SZ];
+                    for (int bit_pos = 0; bit_pos <BIT_SZ ; ++bit_pos) {
+                        code_bytes[bit_pos] = code[bit_pos * (this->dimension / 8) + code_byte_idx];
+                    }
+
+
+                    // TODO make this less complicated
+                    
+                    for (int code_bit = 0; code_bit < 8; ++code_bit) {
+                        // Calculate the base index in the z array
+                        int z_idx = code_byte_idx * 8 *BIT_SZ  + code_bit *BIT_SZ ;
+                        
+                        // Extract bits for this position
+                        int bit_values[BIT_SZ];
+                        for (int bit_pos = 0; bit_pos <BIT_SZ ; ++bit_pos) {
+                            bit_values[bit_pos] = (code_bytes[bit_pos] >> (7 - code_bit)) & 1;
+                        }
+                        
+                        // Check if the bit pattern is valid (unary encoding requires 1s followed by 0s)
+                        // bool valid = true;
+                        // for (int i = 1; i <BIT_SZ ; ++i) {
+                        //     if (bit_values[i-1] == 0 && bit_values[i] == 1) {
+                        //         std::cout << "INVALID!!!" << std::endl;
+                        //         valid = false;
+                        //         break;
+                        //     }
+                        // }
+                        // TODO this needs to change and not be so slow with the array accesses. Probably templating is the move here.
+                        // if (valid) {
+                            // Calculate the contribution to the distance
+                            // int num_ones = 0;
+                            for (int i = 0; i < BIT_SZ; ++i) {
+                                if (bit_values[i] == 1) {
+                                    distance += z[z_idx + i];
+                                    // num_ones++;
+                                }
+                            }
+                            // For debugging
+                            // if (num_ones > 0) {
+                            //     std::cout << "Found " << num_ones << " ones, adding values from z[" << z_idx << "] to z[" << (z_idx+num_ones-1) << "]" << std::endl;
+                            // }
+                        // }
+                    }
+                }
+                return distance + this->correction_amount;
+            }
+                        
+            void compute_z() {
+                // reset z
+                std::fill(z.begin(), z.end(), 0.0f);
+                this->correction_amount = 0.0f;
+                
+                for (int i = 0; i < this->dimension; ++i) {
+                    float c = this->query[i];
+                    float first_partition_distance = (c - this->partitions[i][0]) * (c - this->partitions[i][0]);
+                    
+                    float accumulator = first_partition_distance;
+                    this->correction_amount += first_partition_distance;
+                    
+                    // Now handle 5 partitions (for 4 bits) instead of 3 partitions (for 2 bits)
+                    for (int partition_idx = 1; partition_idx < BIT_SZ + 1; partition_idx++) {
+                        // std::cout << "partition idx" << std::endl;
+                        float m = this->partitions[i][partition_idx];
+                        
+                        float v = (c - m) * (c - m);
+                        float d = v - accumulator;
+                        // std::cout << "z access " << std::endl;
+                        z[i * BIT_SZ + partition_idx - 1] = d;
+                        accumulator += d;
+                    }
+             
+                }
+
+                // std::cout << "compute z done" << std::endl;
+            }
+                        
 
             virtual float symmetric_dis(faiss::idx_t i, faiss::idx_t j) override {
                 throw std::runtime_error("symmetric distance should not be called for the adc 2 bit distance computer during indexing time");
@@ -521,13 +649,14 @@ namespace knn_jni {
     struct FaissIndexUQ4Bit : faiss::IndexFlatCodes {
         std::vector<float> above_threshold_means;
         std::vector<float> below_threshold_means;
+        const int BIT_SZ = 4;
 
         FaissIndexUQ4Bit(
             faiss::idx_t d, std::vector<uint8_t> codes, faiss::MetricType metric=faiss::METRIC_L2, std::vector<float> above_threshold_mean_vector= std::vector<float>(), std::vector<float> below_threshold_mean_vector= std::vector<float>()
-        ) : IndexFlatCodes(d/2, d, metric){
-            
+        ) : IndexFlatCodes(d/8, d, metric){
+            std::cout << " in uq 4 bit ctor , dim : "  << d << std::endl;
             this->codes = codes; 
-            this->code_size = (d/2);
+            this->code_size = (d/8);
 
             this->above_threshold_means = above_threshold_mean_vector;
             this->below_threshold_means = below_threshold_mean_vector;
@@ -536,13 +665,13 @@ namespace knn_jni {
         }
 
         void init(faiss::Index * parent, faiss::Index * grand_parent) {
-            this->ntotal = this->codes.size() / (this->d /2);
+            this->ntotal = this->codes.size() / (this->d / (8 * BIT_SZ));
             parent->ntotal = this->ntotal;   
             grand_parent->ntotal = this->ntotal;
         }
         faiss::FlatCodesDistanceComputer* get_FlatCodesDistanceComputer() const override {
             return new knn_jni::faiss_wrapper::ADCFlatCodesDistanceComputer4Bit(
-                (const uint8_t *) (this->codes.data()), this->d/2, this->d, this->metric_type,above_threshold_means, below_threshold_means
+                (const uint8_t *) (this->codes.data()), this->code_size, this->d, this->metric_type,above_threshold_means, below_threshold_means
             );
 
         }

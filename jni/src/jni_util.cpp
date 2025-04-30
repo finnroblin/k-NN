@@ -218,13 +218,12 @@ knn_jni::QuantizationLevel knn_jni::JNIUtil::ConvertJavaStringToQuantizationLeve
     env->ReleaseStringUTFChars((jstring) javaString, cString);
 
     // std::cout << "\n\n\n---- cppString --- " << cppString << "\n\n\n" << std::endl;
-
     // TODO bulletproof this if any changes on Java side
     if (cppString == "ScalarQuantizationParams_1") {
         return QuantizationLevel::ONE_BIT;
     } else if (cppString == "ScalarQuantizationParams_2") {
         return QuantizationLevel::TWO_BIT;
-    } else if (cppString == "ScalarQuantizationParams_3") {
+    } else if (cppString == "ScalarQuantizationParams_4") {
         return QuantizationLevel::FOUR_BIT;
     } else {
         this->HasExceptionInStack(env, "Unable to convert java string to quantization level");
