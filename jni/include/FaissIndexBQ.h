@@ -653,6 +653,60 @@ namespace knn_jni {
                 correction_amount = 0.0f;
             }
 
+            float distance_to_code_l2_unbatched(const uint8_t* code) {
+                // L2 distance
+               float score = 0.0f;
+               for (int i = 0; i < dimension; i++) {
+                   uint8_t code_block = code[(i / 8)];
+                   int bit_offset = 7 - (i % 8);
+                   int bit_mask = 1 << bit_offset;
+                   int code_masked = (code_block & bit_mask);
+                   int code_translated = code_masked >> bit_offset;
+
+                   // want to select the
+                   // std::cout << "bit_offset: " << bit_offset << std::endl;
+                   // std::cout << "bit_mask: " << bit_mask << std::endl;
+                   // std::cout << "code_masked: " << code_masked << std::endl;
+                   // std::cout << "code_translated: " << code_translated << std::endl;
+
+                   // Inner product
+                   // float dim_score = code_translated == 0 ? 0 : -1*query[i];
+
+                   // L2
+                   float dim_score = (code_translated - query[i]) * (code_translated - query[i]);
+
+                   score += dim_score;
+               }
+               return score;       
+               }
+
+            float distance_to_code_l2_unbatched(const uint8_t* code) {
+                // L2 distance
+               float score = 0.0f;
+               for (int i = 0; i < dimension; i++) {
+                   uint8_t code_block = code[(i / 8)];
+                   int bit_offset = 7 - (i % 8);
+                   int bit_mask = 1 << bit_offset;
+                   int code_masked = (code_block & bit_mask);
+                   int code_translated = code_masked >> bit_offset;
+
+                   // want to select the
+                   // std::cout << "bit_offset: " << bit_offset << std::endl;
+                   // std::cout << "bit_mask: " << bit_mask << std::endl;
+                   // std::cout << "code_masked: " << code_masked << std::endl;
+                   // std::cout << "code_translated: " << code_translated << std::endl;
+
+                   // Inner product
+                   // float dim_score = code_translated == 0 ? 0 : -1*query[i];
+
+                   // L2
+                   float dim_score = (code_translated - query[i]) * (code_translated - query[i]);
+
+                   score += dim_score;
+               }
+               return score;       
+               }
+
             float distance_to_code_batched(const uint8_t * code) {
                 float dist = 0.0f; // dist = this->query_correction;
                 for (int i = 0 ; i < dimension / 8; ++i) {
@@ -670,6 +724,7 @@ namespace knn_jni {
     // Might want a better test suite than the preexisting so that I can verify that innerproduct distances are correct.
     // probably just a float vector with 1s and 0s. Confirm that it's the same 
                 return distance_to_code_batched(code);
+                // return distance_to_code_l2_unbatched(code);
     
 //     if (this->metric_type == faiss::METRIC_L2) {
 //                     return distance_to_code_l2_batched(code);
@@ -721,7 +776,7 @@ namespace knn_jni {
 
 
             virtual void set_query(const float* x) override {
-                correction_amount = 0.0f;
+                this->correction_amount = 0.0f;
                 this->query = x;
                 compute_cord_scores();
                 create_batched_lookup_table();
