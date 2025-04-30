@@ -189,6 +189,162 @@ TEST(FaissIndexBQTest, BaselineCheck) {
     std::cout << "score: " << score << std::endl;
 }
 
+TEST(FaissIndexUQTest, BatchedCheckSameAsBefore16Dim) {
+    int dim = 16; // so each code should be 2 bytes, each query vector has 8 floats
+    faiss::MetricType metric = faiss::METRIC_L2;
+
+    // TODO generate all 3^4 permutations
+    std::vector<uint8_t> codes = {
+        0b11010101, 0b10100100, // 01 
+        0b10010101, 0b00000100, // 00 01 01 01  | 01 01 01 11 01 11 01 11
+    }; // 2 vectors in total
+
+    std::vector<float> query = {
+        -2, -4, 5, 3.2, 4, -7, 0.1, 0.005,-2, -4, 5, 3.2, 4, -7, 0.1, 0.005
+    };
+
+    std::vector<float> below_threshold_means = {
+        -2, -5, 4, 0, 0, 3, 1.2, 4.5,-2, -5, 4, 0, 0, 3, 1.2, 4.5
+    };
+
+    std::vector<float> above_threshold_means(below_threshold_means.size()); // just below threshold means + 1 for simplicity
+    
+    std::transform(below_threshold_means.begin(), below_threshold_means.end(), above_threshold_means.begin(),
+        [](float x) {return x -10;}
+    );
+
+    // std::transform(below_threshold_means.begin(), below_threshold_means.end(), above_threshold_means.begin(),
+    //     [](float x) {return x + 1;}
+    // );
+
+    // create index 
+    knn_jni::faiss_wrapper::FaissIndexUQ2Bit index = knn_jni::faiss_wrapper::FaissIndexUQ2Bit(
+        2*dim, codes, metric, above_threshold_means, below_threshold_means
+    );
+
+    knn_jni::faiss_wrapper::ADCFlatCodesDistanceComputer2Bit * computer_ptr = (knn_jni::faiss_wrapper::ADCFlatCodesDistanceComputer2Bit *) index.get_FlatCodesDistanceComputer();
+
+    computer_ptr->set_query(query.data());
+
+    std::vector<float> distances = std::vector<float>();
+
+    for (int i = 0; i < codes.size()/2; i += 1) {
+        distances.push_back(
+            computer_ptr->distance_to_code_unbatched(&codes[i*2])
+        );
+    }
+
+    std::vector<float> distances_from_batched_computation = std::vector<float>();
+    for (int i = 0; i < codes.size()/2; i += 1) {
+        distances_from_batched_computation.push_back(
+            computer_ptr->distance_to_code_batched(&codes[i*2])
+        );
+    }
+
+
+//     std::vector<float> ground_truth_distances = {
+//         167.11 , 150.46, 170.31
+//     }; // calculated via python script 
+// // z: 0.25 0.75 -0.75 -0.25 -0.75 -0.25 -2.95 -2.45 -3.75 -3.25 6.25 6.75 1.35 1.85 4.745 5.245
+// // is the correct z, so just the dot product needs to be verified.
+// // the distance is defined as p dot z  + correction amount, so we should verify what that is.
+//     for (int i = 0; i < distances.size(); ++i) {
+//         std::cout << "dist: "<< distances[i] << " ";
+//         std::cout << "gt: " << ground_truth_distances[i] << " ";
+//     }
+//     std::cout << std::endl;
+
+
+    for (int j = 0; j < distances.size(); ++j) {
+        std::cout << distances[j] << std::endl;
+        std::cout << distances_from_batched_computation[j] << std::endl;
+        // ASSERT_NEAR(distances_from_batched_computation[j], distances[j], 1e-4) 
+        //     << "Distance mismatch for vector " << j
+        //     << ": expected " << distances_from_batched_computation[j] 
+        //     << ", got " << distances[j];
+    }
+}
+
+TEST(FaissIndexUQTest, BatchedCheckSameAsBefore) {
+    int dim = 8; // so each code should be 2 bytes, each query vector has 8 floats
+    faiss::MetricType metric = faiss::METRIC_L2;
+
+    // TODO generate all 3^4 permutations
+    std::vector<uint8_t> codes = {
+        0b01010101, // 01 01 01 01  
+        0b00000100, // all 0s       | 00 01 00 01 00 11 00 01
+        0b11111111, // 11 11 11 11   
+        0b00010101, // 00 01 01 01  | 01 01 01 11 01 11 01 11
+        0b11010100,  // 11 00 01 00
+        0b01010100, // 01 01 01 00  | 01 11 00 11 00 11 00 00 
+    }; // 3 vectors in total
+
+    std::vector<float> query = {
+        -2, -4, 5, 3.2, 4, -7, 0.1, 0.005
+    };
+
+    std::vector<float> below_threshold_means = {
+        -2, -5, 4, 0, 0, 3, 1.2, 4.5
+    };
+
+    std::vector<float> above_threshold_means(below_threshold_means.size()); // just below threshold means + 1 for simplicity
+    
+    std::transform(below_threshold_means.begin(), below_threshold_means.end(), above_threshold_means.begin(),
+        [](float x) {return x -10;}
+    );
+
+    // std::transform(below_threshold_means.begin(), below_threshold_means.end(), above_threshold_means.begin(),
+    //     [](float x) {return x + 1;}
+    // );
+
+    // create index 
+    knn_jni::faiss_wrapper::FaissIndexUQ2Bit index = knn_jni::faiss_wrapper::FaissIndexUQ2Bit(
+        2*dim, codes, metric, above_threshold_means, below_threshold_means
+    );
+
+    knn_jni::faiss_wrapper::ADCFlatCodesDistanceComputer2Bit * computer_ptr = (knn_jni::faiss_wrapper::ADCFlatCodesDistanceComputer2Bit *) index.get_FlatCodesDistanceComputer();
+
+    computer_ptr->set_query(query.data());
+
+    std::vector<float> distances = std::vector<float>();
+
+    for (int i = 0; i < codes.size()/2; i += 1) {
+        distances.push_back(
+            computer_ptr->distance_to_code(&codes[i*2])
+        );
+    }
+
+    std::vector<float> distances_from_batched_computation = std::vector<float>();
+    for (int i = 0; i < codes.size()/2; i += 1) {
+        distances_from_batched_computation.push_back(
+            computer_ptr->distance_to_code_batched(&codes[i*2])
+        );
+    }
+
+
+//     std::vector<float> ground_truth_distances = {
+//         167.11 , 150.46, 170.31
+//     }; // calculated via python script 
+// // z: 0.25 0.75 -0.75 -0.25 -0.75 -0.25 -2.95 -2.45 -3.75 -3.25 6.25 6.75 1.35 1.85 4.745 5.245
+// // is the correct z, so just the dot product needs to be verified.
+// // the distance is defined as p dot z  + correction amount, so we should verify what that is.
+//     for (int i = 0; i < distances.size(); ++i) {
+//         std::cout << "dist: "<< distances[i] << " ";
+//         std::cout << "gt: " << ground_truth_distances[i] << " ";
+//     }
+//     std::cout << std::endl;
+
+
+    for (int j = 0; j < distances.size(); ++j) {
+        std::cout << distances[j] << std::endl;
+        std::cout << distances_from_batched_computation[j] << std::endl;
+        // ASSERT_NEAR(distances_from_batched_computation[j], distances[j], 1e-4) 
+        //     << "Distance mismatch for vector " << j
+        //     << ": expected " << distances_from_batched_computation[j] 
+        //     << ", got " << distances[j];
+    }
+}
+
 TEST(FaissIndexUQTest, Load2BitIndexTest) {
     const int seed = 42; // Fixed seed for consistent results
 

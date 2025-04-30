@@ -39,16 +39,21 @@ namespace knn_jni {
             std::vector<float> below_threshold_means;
 
             std::vector<float> z;
+            const int BATCH_SZ = 8; // probably needs to be powers of 8 since then it's grabbing a whole byte.
+            // const int BATCH_SZ = 16;
+            const int NUM_BATCHES = 0; // overridden in initializer list
+
             // TODO note: the dimension passed in from k-NN is the number of bits
             // so for 2 bit quant, and 128 dimension vectors, d = 256. 
             ADCFlatCodesDistanceComputer2Bit(const uint8_t * codes, size_t code_size, int d, faiss::MetricType metric_type = faiss::METRIC_L2,
                 std::vector<float> above_threshold_means = std::vector<float>()
                 , std::vector<float> below_threshold_means = std::vector<float>()
             )
-            : FlatCodesDistanceComputer(codes, code_size), dimension(d), query(nullptr), metric_type(metric_type) {
+            : FlatCodesDistanceComputer(codes, code_size), dimension(d), query(nullptr), metric_type(metric_type), NUM_BATCHES((d / 2) / BATCH_SZ ) {
                 // std::cout << "faiss uq 2 bit distance computer ctor  " << std::endl;
                 this->codes = codes;
                 this->code_size = code_size;
+                // TODO change to BIT_SZ
                 this->dimension = d/2; // since the underlying index has dimension as 2 * vector_dim. 
                 this->correction_amount = 0.0f; 
                 this->above_threshold_means = above_threshold_means;
@@ -60,8 +65,7 @@ namespace knn_jni {
                 // std::cout << "code size : " << this->code_size << " dimensions: " << this->dimension;
                 this->partitions = std::vector<std::vector<float>>(
                     this->dimension, std::vector<float> (3 , 0.0f) // TODO magic constant
-                );
-
+                ); // TODO change to BIT_SZ + 1
 
                 for (int i = 0; i < this->dimension; ++i) {
                     float x = below_threshold_means[i];
@@ -71,41 +75,74 @@ namespace knn_jni {
                     partitions[i][2] = y;
                 }
 
+                // TODO change to BIT_SZ
                 this->z = std::vector<float>(this->dimension*2, 0.0f ); // we want it to be d * 2
 
+                // NUM_BATCHES = (this->dimension/NUM_BATCHES);
             }
 
-            virtual float distance_to_code(const uint8_t* code) override {
-                // std::cout << " dist to code " << this->above_threshold_means[0] << std::endl;
-                // code has dimension * 2 bits. So (dimension * 2 / 8) bytes
-                // q: 2.0 -3.0 4.0 -9.0 
-                // p: 00 10
-                // d = 2
-                // q * p = 4.0 
-                //
-                // return 0.0f;
-                // std::cout << "z (sz) " << z.size() << "(distance to code): ";
-                // for (int j = 0; j < (this->z).size(); ++j) {
-                //     std::cout << this->z[j] << " ";
-                // }
-                // std::cout << std::endl;
+            float distance_to_code_batched(const uint8_t* code) {
+                float distance = 0.0f;
+    
+                // batch of 8 vector entries (16 bits)
+                for (int batch_idx = 0; batch_idx < NUM_BATCHES; ++batch_idx) {
+                    // We need to convert the packed 2-bit values to a base-3 index
+                    int base3_index = 0;
+
+                    const std::array<int, 8> powers = {1, 3, 9, 27, 81, 243, 729, 2187};
+                    
+                    // Get the bytes containing the first and second bits
+                    uint8_t first_bits_byte = code[batch_idx];
+                    uint8_t second_bits_byte = code[this->dimension/8 + batch_idx];
+                    
+                    for (int dim = 0; dim < BATCH_SZ; ++dim) {
+                        // Extract the bits for this dimension
+                        int first_bit = (first_bits_byte >> (7 - dim)) & 1;
+                        int second_bit = (second_bits_byte >> (7 - dim)) & 1;
+                        
+                        // Convert bit pattern to value (0, 1, or 2)
+                        int value = 0;
+                        if (first_bit == 1 && second_bit == 0) {
+                            value = 1;  // 10
+                        } else if (first_bit == 1 && second_bit == 1) {
+                            value = 2;  // 11
+                        }
+                        // 00 is value 0, 01 is invalid
+                        
+                        // Add to the base-3 index. Expensive operation, can probably be improved.
+                        base3_index += value * powers[dim];
+                        // power *= 3;
+                    }
+                    
+                    // Look up the precomputed distance for this arrangement of vectors
+                    distance += this->lookup_table[batch_idx][base3_index];
+                }
                 
+                return distance + this->correction_amount;            
+            }
+
+            
+
+            virtual float distance_to_code(const uint8_t* code) override {
+                return distance_to_code_batched(code);
+                // return distance_to_code_unbatched(code);
+            }
+
+            float distance_to_code_unbatched(const uint8_t* code) {
                 // tbe java bit packing code sets the first bit for all dimensions, then the second bit for all dimensions, etc.
-                // 
                 // compute p dot z
                 float distance = 0.0f; 
                 for (int code_byte_idx = 0; code_byte_idx < this->dimension / 8; ++code_byte_idx) {
-                    // std::cout << "before code access " << std::endl;
                     uint8_t first_code_byte = code[code_byte_idx];
                     
-                    // the matching bits for this document are at code_byte[code_bit], (code_byte+this->dimension/8)[code_bit] I think.
-// std::cout << "before second code access " << std::endl;
+                    // the matching bits for this document are at code_byte[code_bit], (code_byte+this->dimension/8)[code_bit]
                     uint8_t second_code_byte = code[(this->dimension / 8) + code_byte_idx];
                     for (int first_code_bit = 0; first_code_bit < 8; ++first_code_bit) {
                         
                         int first_code_entry = (first_code_byte >> (7 - first_code_bit)) & 1;
                         int second_code_entry = (second_code_byte >> (7 - first_code_bit)) & 1;
 
+                        // TODO for 4 bit, change to code_byte_idx * 8 * BIT_SZ , first_code_bit * BIT_SZ.
                         int z_idx = code_byte_idx * 16 + first_code_bit * 2;
                         // std::cout << "before first z access " << std::endl;
                         float first_z_val = z[
@@ -115,107 +152,24 @@ namespace knn_jni {
                             z_idx + 1
                         ];
 
-                        // int code_entry = first_code_entry + second_code_entry;
-
-                        if (first_code_entry == 1) {
-                            
-                            if (second_code_entry == 0) { // 10
-                                distance += first_z_val;
-                            } else { // 11
-                                distance += first_z_val + second_z_val;
-                            }
+                        if (first_code_entry == 1 && second_code_entry == 0) {
+                            distance += first_z_val;
                         }
-                        // if (code_entry == 0) { // 00
-                            // distance += 0; // noop
-                        // }
-                        // else if (code_entry == 1) {// 01
-                            
-                        //     if (first_code_entry == 1) { // 10
-                        //         // distance += second_z_val;
-                        //         distance += first_z_val;
-                        //         // std::cout << "invalid code for 2 bit unary qunatization (can't have 1 before 0), code: " 
-                        //         //     + std::to_string(first_code_entry) + std::to_string(second_code_entry) << " at idx " << code_byte_idx << " "
-                        //         //     << " first code bit " << first_code_bit << std::endl;
-                        //         // throw std::runtime_error("invalid code for 2 bit unary qunatization (can't have 1 before 0), code: " 
-                        //         //     + std::to_string(first_code_entry) + std::to_string(second_code_entry));
-                        //     } else {
-                        //         // 01 
-                        //         // distance += first_z_val;
-                        //         distance += second_z_val;
-                        //         std::cout << "okay code for 2 bit unary qunatization code: " 
-                        //             + std::to_string(first_code_entry) + std::to_string(second_code_entry) << " at idx " << code_byte_idx << " "
-                        //             << " first code bit " << first_code_bit << std::endl;
-                        //     }
-                            
-                        // } 
-                        // else if (code_entry == 2) { // 11
-                        //     distance += (first_z_val + second_z_val);
-                        // }
-                        // else {
-                        //     throw std::runtime_error("invalid code for 2 bit unary qunatization, code: " 
-                        //         + std::to_string(first_code_entry) + std::to_string(second_code_entry));
-                        // }
+                        else if (first_code_entry == 1 && second_code_entry == 1) {
+                            distance += first_z_val + second_z_val;
+                        } else if (first_code_entry == 0 && second_code_entry == 1) {
+                            std::cout << "INVALID!!!" << std::endl;
+                        }
+                        // no contribution to distance for 0 case (handled via the correction_amount variable)
                     }
                 }
-                // std::cout << "just before return " << std::endl;
-                // std::cout << "distance: " << std::to_string(distance) << std::endl;
-                // std::cout << "correction amount: " << std::to_string(this->correction_amount) << std::endl;
-                // std::cout << "sum: " << std::to_string(distance + this->correction_amount) << std::endl;
                 return distance + this->correction_amount;
 
-
-
-
-                //     for (int bit_pair = 0; bit_pair < 4; ++bit_pair) {
-                        
-                //         int shift_amount = 6 - bit_pair * 2; // 6, 4, 2, 0
-                //         int code_entry = (code_byte >> shift_amount) & 0b11;
-
-
-                //         int byte_one;
-
-                //         int byte_two; // it's over by dimension/8 for 2 bit case
-
-                //         int dim_idx = code_byte_idx * 4 + bit_pair;
-                //         float a = z[dim_idx * 2];
-                //         float b = z[dim_idx * 2 + 1];
-                //         switch (code_entry) { //
-                //             case 0: // 00
-                //                 distance += 0;
-                //                 break;
-                //             case 1: // 01
-                //                 distance += a;
-                //                 // std::cout << "01 found" << std::endl;
-                //                 break;
-                //             case 3: // 11
-                //                 distance += (a + b);
-                //                 break;
-                //             case 2: // 10, not valid?
-                //                 throw std::runtime_error("invalid code for 2 bit unary qunatization, code: " + code_entry);
-                //                 distance += b;
-                //                 break;
-                //             default:
-
-                //                 // std::cout << " weird code called for code byte index " << code_byte_idx << " \n";
-                //                 std::string error_msg = "invalid code for 2 bit unary qunatization, code: " + std::to_string(code_entry);
-                //                 throw std::runtime_error(error_msg);
-                //                 break;
-                            
-                //         }
-
-                //         // code_byte = code_byte >> 2; // investigate next 2 bits
-                //     }
-                // }
-
-                // return dot_product + this->correction_amount;
-
-                // return distance + this->correction_amount;
             };
 
             void compute_z() {
-                // std::cout << "this dimension: " << this->dimension << std::endl;
+                // reset z
                 std::fill(z.begin(), z.end(), 0.0f);
-                // this->z = std::vector(this->dimension * 2, 0.0f ); // reset z to be we want it to be d * 2
                 for (int i = 0 ; i < this->dimension; ++i) {
                     // correction_amount +=  // first bit (additive error)
                     // TODO make this more efficient with a good array access pattern after I get poc working.
@@ -238,23 +192,65 @@ namespace knn_jni {
                         accumulator += d;
                     }
                 }
-
-
-                
-                // std::cout << "z: ";
-                // for (int j = 0; j < z.size(); ++j) {
-                //     std::cout << z[j] << " ";
-                // }
-                // std::cout << std::endl;
             }
 
             virtual void set_query(const float* x) override {
-                // std::cout << " query set " << this->below_threshold_means[0] << std::endl;
                 this->correction_amount = 0.0f;
                 this->query = x;
-                // vcompute z                
+                // compute z                
                 compute_z();
+
+                create_batched_lookup_table(); 
             };
+
+            // batched optimization
+            void compute_cord_scores() {
+                const unsigned int num_batches = this->dimension / 8; 
+
+                const unsigned int num_possibilities_per_batch = 6561; // 3 ^ 8  = 6561
+
+                for (int i  = 0; i < num_batches; ++i ) {
+                    compute_per_batch_lookup_2_bit(i, this->lookup_table[i]);
+                }
+            }
+
+            void compute_per_batch_lookup_2_bit(int batch_idx, std::vector<float> & batch) {
+                // Powers of 3 for base-3 indexing
+                const int pow3[] = {1, 3, 9, 27, 81, 243, 729, 2187};
+
+                batch[0] = 0.0f;
+
+                for (int vec_num = 0; vec_num < 8; ++vec_num) {
+                    int z_idx = batch_idx * 2 * 8 + vec_num * 2;
+
+                    const float value_for_first_bit= z[z_idx]; // first bit contribution 
+                    const float value_for_second_bit = z[z_idx+1]; // second bit contribution
+
+                    // Current base-3 position weight
+                    const int weight = pow3[vec_num];
+
+                    for (int prefix = 0; prefix < pow3[vec_num]; ++prefix) {
+                        // Value 1: Only first bit set (10)
+                        batch[prefix + weight] = batch[prefix] + value_for_first_bit;
+                        
+                        // Value 2: Both bits set (11)
+                        batch[prefix + 2 * weight] = batch[prefix] + value_for_first_bit + value_for_second_bit;
+                    }
+                }
+            }
+
+            void create_batched_lookup_table() {    
+                // batch size is 8 vectors, 3^8 possibilities per batch. 
+                // const unsigned int num_batches = this->dimension / 8;
+
+                // Initialize lookup_table with the right dimensions
+                // Each batch needs a table of size 3^8 = 6561
+                this->lookup_table.resize(NUM_BATCHES, std::vector<float>(6561, 0.0f));
+                
+                for (int i = 0; i < NUM_BATCHES; ++i) {
+                    compute_per_batch_lookup_2_bit(i, this->lookup_table[i]);
+                }
+            }
 
             virtual float symmetric_dis(faiss::idx_t i, faiss::idx_t j) override {
                 throw std::runtime_error("symmetric distance should not be called for the adc 2 bit distance computer during indexing time");
