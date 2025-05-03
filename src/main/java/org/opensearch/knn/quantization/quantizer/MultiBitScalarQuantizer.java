@@ -18,6 +18,9 @@ import org.opensearch.knn.quantization.sampler.SamplingFactory;
 
 import java.io.IOException;
 
+import lombok.extern.java.Log;
+import lombok.extern.log4j.Log4j2;
+
 /**
  * MultiBitScalarQuantizer is responsible for quantizing vectors into multi-bit representations per dimension.
  * Unlike the OneBitScalarQuantizer, which uses a single bit ramBytesUsedper dimension to represent whether a value is above
@@ -62,7 +65,8 @@ import java.io.IOException;
  * simpler OneBitScalarQuantizer.
  * </p>
  */
-public class MultiBitScalarQuantizer implements Quantizer<float[], byte[]> {
+@Log4j2
+ public class MultiBitScalarQuantizer implements Quantizer<float[], byte[]> {
     private final int bitsPerCoordinate; // Number of bits used to quantize each dimension
     private final int samplingSize; // Sampling size for training
     private final Sampler sampler; // Sampler for training
@@ -170,12 +174,27 @@ public class MultiBitScalarQuantizer implements Quantizer<float[], byte[]> {
         if (vector == null) {
             return;
         }
+        // log.info("transforming vec");
         validateState(state);
         MultiBitScalarQuantizationState multiBitState = (MultiBitScalarQuantizationState) state;
         float[][] rotationMatrix = multiBitState.getRotationMatrix();
         if (rotationMatrix != null) {
+            log.info("rr triggered!");
             vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
         }
+
+        // for (int i = 0; i < vector.length; i++) {
+        //     float aboveThreshold = multiBitState.getAboveThresholdMeans()[i];
+        //     float belowThreshold = multiBitState.getBelowThresholdMeans()[i];
+
+        //     vector[i] = (vector[i] - belowThreshold) / (aboveThreshold - belowThreshold);
+
+        //     // if (vector[i] < 0.0f) vector[i] = 0.0f;
+        //     // if (vector[i] > 1.0f) vector[i] = 1.0f;
+        //     // vector[i] = vector[i] >= binaryState.getMeanThresholds()[i] ? 1.0f : 0.0f;
+
+        //     // vector[i] = vector[i] < binaryState.getMeanThresholds()[i] ? 1.0f : 0.0f;
+        // }
 
         // multiBitState.getAboveThresholdMeans()
         // multiBitState.

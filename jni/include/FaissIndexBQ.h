@@ -310,12 +310,25 @@ namespace knn_jni {
                     float x = below_threshold_means[i];
                     float y = above_threshold_means[i]; 
                     
-                    for (int j = 0; j <= BIT_SZ; ++j) {
-                        // For each possible count of 1s (from 0 to BIT_SZ),
-                        // linearly interpolate between x and y
+                    // for (int j = 0; j <= BIT_SZ; ++j) {
+                    //     // For each possible count of 1s (from 0 to BIT_SZ),
+                    //     // linearly interpolate between x and y
 
-                        // std::cout << "lin interpolation" << std::endl;
-                        partitions[i][j] = ((BIT_SZ - j) * x + j * y) / static_cast<float>(BIT_SZ);
+                    //     // std::cout << "lin interpolation" << std::endl;
+                    //     partitions[i][j] = (1.0 * (BIT_SZ - j) * x + j * y) / static_cast<float>(BIT_SZ);
+
+                    //     // partitions[i][j] = (1.0 * (j) * x + (BIT_SZ - j) * y) / static_cast<float>(BIT_SZ);
+                    // }
+                    partitions[i][0] = x;
+                    partitions[i][BIT_SZ] = y;
+    
+    // Non-linear spacing for intermediate partitions (gives more weight to center values)
+                    for (int j = 1; j < BIT_SZ; ++j) {
+                        float t = static_cast<float>(j) / BIT_SZ;
+                        // Apply a slight non-linear transformation to better represent data distribution
+                        // This gives more precision in the middle range where most vectors typically fall
+                        // t = std::pow(t, 0.8); // Slight curve that emphasizes middle values
+                        partitions[i][j] = (1.0f - t) * x + t * y;
                     }
                 }
                 // std::cout << "after interplt" << std::endl;
@@ -329,7 +342,7 @@ namespace knn_jni {
             };
 
             virtual void set_query(const float* x) override {
-                correction_amount = 0.0f;
+                this->correction_amount = 0.0f;
                 this->query = x;
                 // vcompute z
                 // here we need to calculate the partitions. 
@@ -337,6 +350,51 @@ namespace knn_jni {
             };
 
             float distance_to_code_unbatched(const uint8_t* code) {
+                float distance = 0.0f;
+                
+                for (int code_byte_idx = 0; code_byte_idx < this->dimension / 8; ++code_byte_idx) {
+                    // Get all 4 bit planes for this byte index
+                    uint8_t bit0_byte = code[(0) * (this->dimension / 8) + code_byte_idx];
+                    uint8_t bit1_byte = code[(1) * (this->dimension / 8) + code_byte_idx];
+                    uint8_t bit2_byte = code[(2) * (this->dimension / 8) + code_byte_idx];
+                    uint8_t bit3_byte = code[(3) * (this->dimension / 8) + code_byte_idx];
+                    
+                    for (int code_bit = 0; code_bit < 8; ++code_bit) {
+                        // Calculate the base index in the z array for this dimension
+                        int z_idx = code_byte_idx * 8 * BIT_SZ + code_bit * BIT_SZ;
+                        
+                        // Extract each bit at position code_bit
+                        uint8_t bit0 = (bit0_byte >> (7 - code_bit)) & 1;
+                        uint8_t bit1 = (bit1_byte >> (7 - code_bit)) & 1;
+                        uint8_t bit2 = (bit2_byte >> (7 - code_bit)) & 1;
+                        uint8_t bit3 = (bit3_byte >> (7 - code_bit)) & 1;
+                        
+                        // Process according to unary encoding logic - valid patterns are:
+                        // 0000 = partition 0 (no distance added)
+                        // 1000 = partition 1 (add z[0])
+                        // 1100 = partition 2 (add z[0] + z[1])
+                        // 1110 = partition 3 (add z[0] + z[1] + z[2])
+                        // 1111 = partition 4 (add z[0] + z[1] + z[2] + z[3])
+                        
+                        // Using cascading conditionals for efficiency
+                        if (bit0) {
+                            distance += z[z_idx];
+                            if (bit1) {
+                                distance += z[z_idx + 1];
+                                if (bit2) {
+                                    distance += z[z_idx + 2];
+                                    if (bit3) {
+                                        distance += z[z_idx + 3];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                return distance + this->correction_amount;
+            }
+            float distance_to_code_unbatched_old(const uint8_t* code) {
                 // tbe java bit packing code sets the first bit for all dimensions, then the second bit for all dimensions, etc.
                 // compute p dot z
                 float distance = 0.0f;
@@ -359,23 +417,23 @@ namespace knn_jni {
                         
                         // Extract bits for this position
                         int bit_values[BIT_SZ];
-                        for (int bit_pos = 0; bit_pos <BIT_SZ ; ++bit_pos) {
+                        for (int bit_pos = 0; bit_pos < BIT_SZ ; ++bit_pos) {
                             bit_values[bit_pos] = (code_bytes[bit_pos] >> (7 - code_bit)) & 1;
                         }
                         
                         // Check if the bit pattern is valid (unary encoding requires 1s followed by 0s)
-                        // bool valid = true;
-                        // for (int i = 1; i <BIT_SZ ; ++i) {
-                        //     if (bit_values[i-1] == 0 && bit_values[i] == 1) {
-                        //         std::cout << "INVALID!!!" << std::endl;
-                        //         valid = false;
-                        //         break;
-                        //     }
-                        // }
+                        bool valid = true;
+                        for (int i = 1; i <BIT_SZ ; ++i) {
+                            if (bit_values[i-1] == 0 && bit_values[i] == 1) {
+                                std::cout << "INVALID!!!" << std::endl;
+                                valid = false;
+                                break;
+                            }
+                        }
                         // TODO this needs to change and not be so slow with the array accesses. Probably templating is the move here.
                         // if (valid) {
                             // Calculate the contribution to the distance
-                            // int num_ones = 0;
+                            int num_ones = 0;
                             for (int i = 0; i < BIT_SZ; ++i) {
                                 if (bit_values[i] == 1) {
                                     distance += z[z_idx + i];
@@ -387,39 +445,126 @@ namespace knn_jni {
                             //     std::cout << "Found " << num_ones << " ones, adding values from z[" << z_idx << "] to z[" << (z_idx+num_ones-1) << "]" << std::endl;
                             // }
                         // }
+                        // Count the number of leading 1s (this is the partition index)
+                        // int num_ones = 0;
+                        // for (int i = 0; i < BIT_SZ; ++i) {
+                        //     if (bit_values[i] == 1) {
+                        //         num_ones++;
+                        //     } else {
+                        //         break; // In unary encoding, once we hit a 0, all remaining bits should be 0
+                        //     }
+                        // }
+
+                        // // Add z values for this partition (all values up to num_ones)
+                        // for (int i = 0; i < num_ones; ++i) {
+                        //     distance += z[z_idx + i];
+                        // }
+
+
                     }
                 }
                 return distance + this->correction_amount;
             }
-                        
             void compute_z() {
-                // reset z
                 std::fill(z.begin(), z.end(), 0.0f);
                 this->correction_amount = 0.0f;
                 
-                for (int i = 0; i < this->dimension; ++i) {
-                    float c = this->query[i];
-                    float first_partition_distance = (c - this->partitions[i][0]) * (c - this->partitions[i][0]);
+                for (int dim = 0; dim < this->dimension; ++dim) {
+                    float query_value = this->query[dim];
                     
-                    float accumulator = first_partition_distance;
-                    this->correction_amount += first_partition_distance;
-                    
-                    // Now handle 5 partitions (for 4 bits) instead of 3 partitions (for 2 bits)
-                    for (int partition_idx = 1; partition_idx < BIT_SZ + 1; partition_idx++) {
-                        // std::cout << "partition idx" << std::endl;
-                        float m = this->partitions[i][partition_idx];
-                        
-                        float v = (c - m) * (c - m);
-                        float d = v - accumulator;
-                        // std::cout << "z access " << std::endl;
-                        z[i * BIT_SZ + partition_idx - 1] = d;
-                        accumulator += d;
+                    // Pre-calculate all squared distances
+                    std::vector<float> squared_distances(BIT_SZ + 1);
+                    for (int p = 0; p <= BIT_SZ; p++) {
+                        float diff = query_value - this->partitions[dim][p];
+                        squared_distances[p] = diff * diff;
                     }
-             
+                    
+                    // Base correction amount
+                    this->correction_amount += squared_distances[0];
+                    float accumulator = squared_distances[0];
+                    
+                    // Calculate incremental distances with better numerical precision
+                    for (int p = 1; p <= BIT_SZ; p++) {
+                        float increment = squared_distances[p] - accumulator;
+                        
+                        // Handle potential numerical instability
+                        if (increment < 0 && std::abs(increment) < 1e-6) {
+                            increment = 0;
+                        }
+                        
+                        z[dim * BIT_SZ + (p-1)] = increment;
+                        accumulator += increment;
+                    }
                 }
-
-                // std::cout << "compute z done" << std::endl;
             }
+            
+            
+            void compute_z_old() {
+                // Reset z vector and correction amount
+                std::fill(z.begin(), z.end(), 0.0f);
+                this->correction_amount = 0.0f;
+                
+                for (int dim = 0; dim < this->dimension; ++dim) {
+                    float query_value = this->query[dim];
+                    
+                    // Calculate the squared distance to the first partition value (partition 0)
+                    // This becomes our baseline "correction amount" - the minimum distance contribution
+                    float base_distance = (query_value - this->partitions[dim][0]) * (query_value - this->partitions[dim][0]);
+                    float accumulator = base_distance;
+                    this->correction_amount += base_distance;
+                    
+                    // For each remaining partition (1 through 4 for 4-bit encoding)
+                    // Calculate the incremental distance contribution of this partition
+                    for (int p = 1; p <= BIT_SZ; p++) {
+                        // Compute squared distance to this partition value
+                        float partition_value = this->partitions[dim][p];
+                        float squared_dist = (query_value - partition_value) * (query_value - partition_value);
+                        
+                        // Calculate the incremental distance (difference from what we've accumulated so far)
+                        float increment = squared_dist - accumulator;
+                        
+                        // Store this increment in the z array
+                        z[dim * BIT_SZ + (p-1)] = increment;
+                        
+                        // Update accumulator for next partition
+                        accumulator += increment;
+                    }
+                }
+                
+                // At this point:
+                // - correction_amount is the minimum distance (partition 0 for all dimensions)
+                // - z contains the incremental distances for partitions 1-4
+                // - When computing distance, we'll add z[i] values based on the unary encoding pattern
+            }
+                        
+            // void compute_z() {
+            //     // reset z
+            //     std::fill(z.begin(), z.end(), 0.0f);
+            //     // this->correction_amount = 0.0f;
+                
+            //     for (int i = 0; i < this->dimension; ++i) {
+            //         float c = this->query[i];
+            //         float first_partition_distance = (c - this->partitions[i][0]) * (c - this->partitions[i][0]);
+                    
+            //         float accumulator = first_partition_distance;
+            //         this->correction_amount += first_partition_distance;
+                    
+            //         // Now handle 5 partitions (for 4 bits) instead of 3 partitions (for 2 bits)
+            //         for (int partition_idx = 1; partition_idx < BIT_SZ + 1; partition_idx++) {
+            //             // std::cout << "partition idx" << std::endl;
+            //             float m = this->partitions[i][partition_idx];
+                        
+            //             float v = (c - m) * (c - m);
+            //             float d = v - accumulator;
+            //             // std::cout << "z access " << std::endl;
+            //             z[i * BIT_SZ + partition_idx - 1] = d;
+            //             accumulator += d;
+            //         }
+             
+            //     }
+
+            //     // std::cout << "compute z done" << std::endl;
+            // }
                         
 
             virtual float symmetric_dis(faiss::idx_t i, faiss::idx_t j) override {
