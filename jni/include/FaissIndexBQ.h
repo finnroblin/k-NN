@@ -30,7 +30,7 @@ namespace knn_jni {
             int dimension;
             size_t code_size;
             faiss::MetricType metric_type;
-            std::vector<std::vector<float>> lookup_table; // used in batched distances
+            std::vector<std::vector<std::vector<float>>> lookup_table; // used in batched distances
             std::vector<float> coord_scores; // scores for each dimension
             float correction_amount; // used in batched distances
 
@@ -81,7 +81,24 @@ namespace knn_jni {
                 // NUM_BATCHES = (this->dimension/NUM_BATCHES);
             }
 
-            float distance_to_code_batched(const uint8_t* code) {
+            float distance_to_code_batched(const uint8_t * code) {
+                float dist = 0.0f; 
+                int num_bytes = (dimension/8);
+
+                for (int dim_idx = 0; dim_idx < num_bytes; ++dim_idx) {
+                    const unsigned char code_batch_first_bit = code[dim_idx];
+
+                    const unsigned char code_batch_second_bit = code[dim_idx + num_bytes];
+
+                    // TODO more efficient vector access pattern
+                    dist += this->lookup_table[0][dim_idx][code_batch_first_bit];
+                    dist += this->lookup_table[1][dim_idx][code_batch_second_bit];
+                }
+
+                return dist + correction_amount;
+            }
+
+            float distance_to_code_batched_old(const uint8_t* code) {
                 float distance = 0.0f;
     
                 // batch of 8 vector entries (16 bits)
@@ -115,7 +132,7 @@ namespace knn_jni {
                     }
                     
                     // Look up the precomputed distance for this arrangement of vectors
-                    distance += this->lookup_table[batch_idx][base3_index];
+                    // distance += this->lookup_table[batch_idx][base3_index];
                 }
                 
                 return distance + this->correction_amount;            
@@ -207,14 +224,37 @@ namespace knn_jni {
             void compute_cord_scores() {
                 const unsigned int num_batches = this->dimension / 8; 
 
-                const unsigned int num_possibilities_per_batch = 6561; // 3 ^ 8  = 6561
+                // const unsigned int num_possibilities_per_batch = 6561; // 3 ^ 8  = 6561
 
                 for (int i  = 0; i < num_batches; ++i ) {
-                    compute_per_batch_lookup_2_bit(i, this->lookup_table[i]);
+                    compute_per_batch_lookup_2_bit(i, 0, this->lookup_table[i][0]);
+                    compute_per_batch_lookup_2_bit(i, 1, this->lookup_table[i][1]);
                 }
             }
 
-            void compute_per_batch_lookup_2_bit(int batch_idx, std::vector<float> & batch) {
+            void compute_per_batch_lookup_2_bit(int batch_idx, int which_bit, std::vector<float> & batch) {
+                batch[0] = 0.0f; 
+                for (int i = 0; i < 8; ++i) {
+                    const unsigned int bit_masked = 1 << i;
+                    // int batch_idx_offset = batch_idx * 8 * 2; // start location
+                    // int first_or_second_bit_offset = 2 * which_bit; // which bit we're on (every odd entry corresponds to first bit in entry, every even entry to second bit in document entry)
+                    // int code_bit_offset = (7 - i); // for building batch
+                    // int code_bit_offset = i;
+                    // int z_idx = batch_idx_offset + first_or_second_bit_offset + code_bit_offset;
+                    int dim_idx = batch_idx * 8 + (7 - i);
+                    int z_idx = dim_idx * 2 + which_bit;
+                    const float bit_value = this->z[ 
+                        z_idx
+                    ];
+                    for (unsigned int suffix = 0; suffix < bit_masked; ++suffix) {
+                        batch[
+                            bit_masked | suffix // range from 0 to 255
+                        ] = batch[suffix] + bit_value;
+                    }
+                }
+            }
+
+            void compute_per_batch_lookup_2_bit_old(int batch_idx, std::vector<float> & batch) {
                 // Powers of 3 for base-3 indexing
                 const int pow3[] = {1, 3, 9, 27, 81, 243, 729, 2187};
 
@@ -241,14 +281,36 @@ namespace knn_jni {
 
             void create_batched_lookup_table() {    
                 // batch size is 8 vectors, 3^8 possibilities per batch. 
-                // const unsigned int num_batches = this->dimension / 8;
+                const unsigned int num_batches = this->dimension / 8;
 
                 // Initialize lookup_table with the right dimensions
                 // Each batch needs a table of size 3^8 = 6561
-                this->lookup_table.resize(NUM_BATCHES, std::vector<float>(6561, 0.0f));
+                // this->lookup_table.resize(NUM_BATCHES, std::vector<float>(6561, 0.0f));
                 
-                for (int i = 0; i < NUM_BATCHES; ++i) {
-                    compute_per_batch_lookup_2_bit(i, this->lookup_table[i]);
+                // for (int i = 0; i < NUM_BATCHES; ++i) {
+                //     // compute_per_batch_lookup_2_bit(i, this->lookup_table[i]);
+                // }
+                // this->lookup_table.resize(
+                //     num_batches,
+                //     std::vector<std::vector<float>>(
+                //         2, 
+                //         std::vector<float> (256, 0.0f) 
+                //     )
+                // );
+                this->lookup_table.resize(
+                    2,
+                    std::vector<std::vector<float>>(
+                        num_batches,
+                        std::vector<float>(256, 0.0f)
+                    )
+                );
+                
+                for (int i  = 0; i < num_batches; ++i ) {
+                    // compute_per_batch_lookup_2_bit(i, 0, this->lookup_table[i][0]);
+                    // compute_per_batch_lookup_2_bit(i, 1, this->lookup_table[i][1]);
+                    compute_per_batch_lookup_2_bit(i, 0, this->lookup_table[0][i]);
+                    compute_per_batch_lookup_2_bit(i, 1, this->lookup_table[1][i]);
+                    
                 }
             }
 
