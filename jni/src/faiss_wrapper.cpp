@@ -584,7 +584,10 @@ jlong knn_jni::faiss_wrapper::LoadIndexWithStreamADCUnary(faiss::IOReader* ioRea
     faiss::IndexBinaryFlat * codesIndex = (faiss::IndexBinaryFlat *) hnswBinary->storage; // since binary storage is binary flat codes
     // faiss::HNSW hnsw = hnswBinary->hnsw;
     // if (!codesIndex->xb) throw std::runtime_error("codes are broken!!\n");
-    std::vector<uint8_t> codes = codesIndex->xb;
+    std::vector<uint8_t> codes = codesIndex->xb; // TODO is there a way to do this without a copy?
+
+    std::vector<uint8_t> * codes_ptr = &(codesIndex->xb); // TODO is there a way to do this without a copy?
+
     // std::cout << "printing with metricType " << metricType << " \n";
     // if (hnswBinary->metric_type == nullptr) {
     //     // std::cout
@@ -601,9 +604,16 @@ jlong knn_jni::faiss_wrapper::LoadIndexWithStreamADCUnary(faiss::IOReader* ioRea
     if (quantLevel == knn_jni::QuantizationLevel::TWO_BIT) {
         FaissIndexUQ2Bit * alteredStorage =  nullptr;
 
+        // alteredStorage = new FaissIndexUQ2Bit(
+        //     indexReader->d, codes, metricType, above_threshold_mean_vector, below_threshold_mean_vector
+        // );
+
         alteredStorage = new FaissIndexUQ2Bit(
-            indexReader->d, codes, metricType, above_threshold_mean_vector, below_threshold_mean_vector
+            indexReader->d, codes_ptr, metricType, above_threshold_mean_vector, below_threshold_mean_vector
         );
+
+
+
             // indexReader->metric_type);
         faiss::IndexHNSW * alteredIndexHNSW = new faiss::IndexHNSW(alteredStorage, 32);     //TODO fix M
         alteredIndexHNSW->hnsw = hnswBinary->hnsw;
@@ -634,7 +644,8 @@ jlong knn_jni::faiss_wrapper::LoadIndexWithStreamADCUnary(faiss::IOReader* ioRea
     
         // indexReader->metric_type);
 }
-   
+
+// TEST here
 jlong knn_jni::faiss_wrapper::LoadIndexWithStreamADC(faiss::IOReader* ioReader, faiss::MetricType metricType) {
     if (ioReader == nullptr)  {
         throw std::runtime_error("IOReader cannot be null");

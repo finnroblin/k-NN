@@ -766,7 +766,16 @@ namespace knn_jni {
         };
 
         struct FaissIndexBQ : faiss::IndexFlatCodes {
-
+            FaissIndexBQ(
+                faiss::idx_t d,
+                std::vector<uint8_t> * codes_ptr,
+                faiss::MetricType metric=faiss::METRIC_L2
+            ) : IndexFlatCodes(d/8, d, metric) {
+                std::cout << " in the proper constructor, hopefully it works!" << std::endl;
+                this->code_size = (d/ 8);
+            }
+            
+            
             FaissIndexBQ(faiss::idx_t d, std::vector<uint8_t> codes, faiss::MetricType metric=faiss::METRIC_L2) 
             : IndexFlatCodes(d/8, d, metric){
                 // std::cout << "FaissIndexBQ constructor called with codes lenght" << codes.size() << "and codes 0\n" << " and d/8 " << d/8 << " and d " << d << " and metric" << metric;
@@ -824,27 +833,44 @@ namespace knn_jni {
         // as part of the input, pass in a partitions vector .
         std::vector<float> above_threshold_means;
         std::vector<float> below_threshold_means;
-
+        std::vector<uint8_t> * codes_ptr;
         FaissIndexUQ2Bit(
-            faiss::idx_t d, std::vector<uint8_t> codes, faiss::MetricType metric=faiss::METRIC_L2, std::vector<float> above_threshold_mean_vector = std::vector<float>(), std::vector<float> below_threshold_mean_vector= std::vector<float>()
+            faiss::idx_t d, std::vector<uint8_t> * codes_ptr, faiss::MetricType metric=faiss::METRIC_L2, std::vector<float> above_threshold_mean_vector = std::vector<float>(), std::vector<float> below_threshold_mean_vector= std::vector<float>()
         ) : IndexFlatCodes(d/8, d, metric){
-            // std::cout << "faiss uq 2 bit ctor , dimension " << d << "."  << std::endl;
-            this->codes = codes; 
+            std::cout << "faiss uq 2 bit ctor changed , dimension " << d << "."  << std::endl;
+            std::cout << " code ptr " << static_cast<char>((*codes_ptr)[0]) << std::endl;
+            // this->codes = codes; 
+            std::cout << " after code ptr access " << std::endl;
+            this->codes_ptr = codes_ptr;
             this->code_size = (d/ 8);
             this->above_threshold_means = above_threshold_mean_vector;
             this->below_threshold_means = below_threshold_mean_vector;
         }
 
+        // FaissIndexUQ2Bit(
+        //     faiss::idx_t d, std::vector<uint8_t> codes, faiss::MetricType metric=faiss::METRIC_L2, std::vector<float> above_threshold_mean_vector = std::vector<float>(), std::vector<float> below_threshold_mean_vector= std::vector<float>()
+        // ) : IndexFlatCodes(d/8, d, metric){
+        //     // std::cout << "faiss uq 2 bit ctor , dimension " << d << "."  << std::endl;
+        //     this->codes = codes; 
+        //     this->code_size = (d/ 8);
+        //     this->above_threshold_means = above_threshold_mean_vector;
+        //     this->below_threshold_means = below_threshold_mean_vector;
+        // }
+
         void init(faiss::Index * parent, faiss::Index * grand_parent) {
             // std::cout << "faiss uq 2 bit init  " << std::endl;
-            this->ntotal = this->codes.size() / (this->d / 16); // n total: number of total vectors. should be codes.sz / 16. 
+            this->ntotal = this->codes_ptr->size() / (this->d / 16); // n total: number of total vectors. should be codes.sz / 16. 
             parent->ntotal = this->ntotal;
             grand_parent->ntotal = this->ntotal;
         }
         faiss::FlatCodesDistanceComputer* get_FlatCodesDistanceComputer() const override {
             // std::cout << "faiss uq 2 bit distance computer  " << std::endl;
+            // // return new knn_jni::faiss_wrapper::ADCFlatCodesDistanceComputer2Bit(
+            //     (const uint8_t *) (this->codes.data()), this->code_size, this->d, this->metric_type,
+            //     above_threshold_means, below_threshold_means
+            // );
             return new knn_jni::faiss_wrapper::ADCFlatCodesDistanceComputer2Bit(
-                (const uint8_t *) (this->codes.data()), this->code_size, this->d, this->metric_type,
+                (this->codes_ptr->data()), this->code_size, this->d, this->metric_type,
                 above_threshold_means, below_threshold_means
             );
 
