@@ -252,7 +252,7 @@ public class RecallTestsIT extends KNNRestTestCase {
      */
     @SneakyThrows
     public void testRecall_whenADCEnabledAnd4Bit_thenRecallAbove40Percent() {
-        List<SpaceType> spaceTypes = List.of(SpaceType.L2 // TODO: only l2 is supported at this point. 
+        List<SpaceType> spaceTypes = List.of(SpaceType.L2 // TODO: only l2 is supported at this point.
         // , SpaceType.INNER_PRODUCT
         );
         // List<SpaceType> spaceTypes = List.of(SpaceType.L2);
