@@ -837,10 +837,10 @@ namespace knn_jni {
         FaissIndexUQ2Bit(
             faiss::idx_t d, std::vector<uint8_t> * codes_ptr, faiss::MetricType metric=faiss::METRIC_L2, std::vector<float> above_threshold_mean_vector = std::vector<float>(), std::vector<float> below_threshold_mean_vector= std::vector<float>()
         ) : IndexFlatCodes(d/8, d, metric){
-            std::cout << "faiss uq 2 bit ctor changed , dimension " << d << "."  << std::endl;
-            std::cout << " code ptr " << static_cast<char>((*codes_ptr)[0]) << std::endl;
+            // std::cout << "faiss uq 2 bit ctor changed , dimension " << d << "."  << std::endl;
+            // std::cout << " code ptr " << static_cast<char>((*codes_ptr)[0]) << std::endl;
             // this->codes = codes; 
-            std::cout << " after code ptr access " << std::endl;
+            // std::cout << " after code ptr access " << std::endl;
             this->codes_ptr = codes_ptr;
             this->code_size = (d/ 8);
             this->above_threshold_means = above_threshold_mean_vector;
