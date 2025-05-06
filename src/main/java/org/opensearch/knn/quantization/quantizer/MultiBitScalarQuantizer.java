@@ -182,6 +182,8 @@ public class MultiBitScalarQuantizer implements Quantizer<float[], byte[]> {
             vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
         }
 
+        log.info("random thresh {}", multiBitState.getAverageL2L1Ratio());
+
         // for (int i = 0; i < vector.length; i++) {
         // float aboveThreshold = multiBitState.getAboveThresholdMeans()[i];
         // float belowThreshold = multiBitState.getBelowThresholdMeans()[i];
