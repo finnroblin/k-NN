@@ -26,7 +26,7 @@ class QuantizerHelper {
      * Threshold for triggering random rotation during training.
      * If average L2/L1 ratio exceeds this value, rotation will be applied.
      */
-    private static final double ROTATION_MATRIX_THRESHOLD = 0.6;
+    private static final double ROTATION_MATRIX_THRESHOLD = 1.0;
 
     // ========================= ONE BIT ========================= //
 
@@ -155,7 +155,8 @@ class QuantizerHelper {
      * @return A 2D float rotation matrix or null.
      */
     private static float[][] maybeApplyRotation(float[] baseVector, double l2l1Ratio) {
-        return l2l1Ratio > ROTATION_MATRIX_THRESHOLD ? RandomGaussianRotation.generateRotationMatrix(baseVector.length) : null;
+        return null;
+        // return l2l1Ratio > ROTATION_MATRIX_THRESHOLD ? RandomGaussianRotation.generateRotationMatrix(baseVector.length) : null;
     }
 
     /**

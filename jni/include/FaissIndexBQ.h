@@ -216,8 +216,7 @@ namespace knn_jni {
                 this->query = x;
                 // compute z                
                 compute_z();
-
-                create_batched_lookup_table(); 
+                create_batched_lookup_table();
             };
 
             // batched optimization
@@ -681,7 +680,7 @@ namespace knn_jni {
 //                         ("ADC distance computer called with unsupported metric, see faiss;:MetricType enum w metric" + std::to_string(this->metric_type)) // would be nice to have std::format w C++20....
 //                     );
 //                 }
-};
+            };
 
             void compute_cord_scores() {
                 assert(this->query != nullptr); // make sure we've already set the query
