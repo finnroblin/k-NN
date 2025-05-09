@@ -107,6 +107,8 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
             vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
         }
 
+        // if () // should correct with adc
+
         for (int i = 0; i < vector.length; i++) {
             float aboveThreshold = binaryState.getAboveThresholdMeans()[i];
             float belowThreshold = binaryState.getBelowThresholdMeans()[i];
@@ -121,6 +123,12 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
             // vector[i] = vector[i] < binaryState.getMeanThresholds()[i] ? 1.0f : 0.0f;
         }
     }
+
+    // private float transformWithCorrectionForADC(float original, float belowThreshold) {
+
+    // }
+
+    // private
 
     /**
      * Validates the quantization state to ensure it is of the expected type.

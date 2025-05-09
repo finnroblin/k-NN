@@ -46,6 +46,9 @@ import static org.opensearch.knn.common.KNNConstants.HNSW_ALGO_EF_SEARCH;
 import static org.opensearch.knn.common.KNNConstants.SPACE_TYPE;
 import static org.opensearch.knn.common.KNNConstants.VECTOR_DATA_TYPE_FIELD;
 import static org.opensearch.knn.index.query.parser.RescoreParser.RESCORE_PARAMETER;
+
+import org.opensearch.knn.quantization.enums.ScalarQuantizationType;
+import org.opensearch.knn.quantization.models.quantizationParams.ScalarQuantizationParams;
 import org.opensearch.knn.quantization.models.quantizationState.MultiBitScalarQuantizationState;
 
 public class IndexUtil {
@@ -286,22 +289,29 @@ public class IndexUtil {
 
         if (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)) {
             loadParameters.put("adc_enabled", true);
-            loadParameters.put("quantization_level", segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier());
-            loadParameters.put(
-                "above_threshold_means",
-                ((MultiBitScalarQuantizationState) (segmentLevelQuantizationInfo.getQuantizationState())).getAboveThresholdMeans()
-            ); // TODO: refactor this so no dynamic cast...
-            loadParameters.put(
-                "below_threshold_means",
-                ((MultiBitScalarQuantizationState) segmentLevelQuantizationInfo.getQuantizationState()).getBelowThresholdMeans()
-            );
+            String quantization_level = segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier();
+
+            loadParameters.put("quantization_level", quantization_level);
             loadParameters.put("space_type", spaceType.getValue());
 
-            // here also pass the below and above thresholds, so that i can pass to faiss.
-            // loadParameters.put
+            if (isMultiBit(quantization_level)) {
+                loadParameters.put(
+                    "above_threshold_means",
+                    ((MultiBitScalarQuantizationState) (segmentLevelQuantizationInfo.getQuantizationState())).getAboveThresholdMeans()
+                ); // TODO: refactor this so no dynamic cast...
+                loadParameters.put(
+                    "below_threshold_means",
+                    ((MultiBitScalarQuantizationState) segmentLevelQuantizationInfo.getQuantizationState()).getBelowThresholdMeans()
+                );
+            }
         }
 
         return Collections.unmodifiableMap(loadParameters);
+    }
+
+    private static boolean isMultiBit(String quantization_level) {
+        return (quantization_level.equals(ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.TWO_BIT))
+            || quantization_level.equals(ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.FOUR_BIT)));
     }
 
     public static boolean isClusterOnOrAfterMinRequiredVersion(String key) {
