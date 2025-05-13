@@ -7,6 +7,7 @@ package org.opensearch.knn.index.query;
 
 import lombok.experimental.UtilityClass;
 import org.apache.lucene.index.LeafReader;
+import org.opensearch.knn.index.SpaceType;
 import org.opensearch.knn.index.codec.KNN990Codec.QuantizationConfigKNNCollector;
 import org.opensearch.knn.index.quantizationservice.QuantizationService;
 import org.opensearch.knn.quantization.enums.ScalarQuantizationType;
@@ -77,6 +78,18 @@ public class SegmentLevelQuantizationUtil {
         }
         final QuantizationService quantizationService = QuantizationService.getInstance();
         quantizationService.transform(segmentLevelQuantizationInfo.getQuantizationState(), vector);
+    }
+
+    public static void transformVectorWithADC(final float[] vector, final SegmentLevelQuantizationInfo segmentLevelQuantizationInfo,
+    SpaceType spaceType) {
+        if (segmentLevelQuantizationInfo == null) {
+            return;
+        }
+        final QuantizationService quantizationService = QuantizationService.getInstance();
+        // quantizationService.transform(segmentLevelQuantizationInfo.getQuantizationState(), vector);
+        quantizationService.transformWithADC(
+            segmentLevelQuantizationInfo.getQuantizationState(), vector, spaceType
+        );
     }
 
     /**

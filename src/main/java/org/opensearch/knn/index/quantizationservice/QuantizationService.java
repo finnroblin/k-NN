@@ -8,6 +8,7 @@ package org.opensearch.knn.index.quantizationservice;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import org.apache.lucene.index.FieldInfo;
+import org.opensearch.knn.index.SpaceType;
 import org.opensearch.knn.index.VectorDataType;
 import org.opensearch.knn.index.engine.qframe.QuantizationConfig;
 import org.opensearch.knn.index.vectorvalues.KNNVectorValues;
@@ -97,8 +98,20 @@ public final class QuantizationService<T, R> {
      * @param vector The vector to be transformed.
      */
     public void transform(final QuantizationState quantizationState, final T vector) {
+    // final String spaceType 
+    // ) 
+    // {
         Quantizer<T, R> quantizer = QuantizerFactory.getQuantizer(quantizationState.getQuantizationParams());
-        quantizer.transform(vector, quantizationState);
+        // TODO here we need to call an ADC method based on state.
+        quantizer.transform(vector, quantizationState, spaceType);
+    }
+
+    public void transformWithADC(
+        final QuantizationState quantizationState, final T vector, final SpaceType spaceType
+    ) {
+        Quantizer<T, R> quantizer = QuantizerFactory.getQuantizer(quantizationState.getQuantizationParams());
+        // TODO here we need to call an ADC method based on state.
+        quantizer.transformWithADC(vector, quantizationState, spaceType);
     }
 
     /**

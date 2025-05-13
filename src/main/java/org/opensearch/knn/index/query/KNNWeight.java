@@ -473,6 +473,9 @@ public class KNNWeight extends Weight {
             transformedVector = knnQuery.getQueryVector().clone();
             // TODO pass through the space type here.
             SegmentLevelQuantizationUtil.transformVector(transformedVector, segmentLevelQuantizationInfo);
+            SegmentLevelQuantizationUtil.transformVectorWithADC(
+                transformedVector, segmentLevelQuantizationInfo, spaceType
+            );
         } else {
             quantizedVector = SegmentLevelQuantizationUtil.quantizeVector(knnQuery.getQueryVector(), segmentLevelQuantizationInfo);
         }

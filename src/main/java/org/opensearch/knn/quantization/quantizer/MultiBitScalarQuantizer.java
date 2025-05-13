@@ -173,32 +173,19 @@ public class MultiBitScalarQuantizer implements Quantizer<float[], byte[]> {
         if (vector == null) {
             return;
         }
-        // log.info("transforming vec");
+
         validateState(state);
         MultiBitScalarQuantizationState multiBitState = (MultiBitScalarQuantizationState) state;
         float[][] rotationMatrix = multiBitState.getRotationMatrix();
         if (rotationMatrix != null) {
-            log.info("rr triggered!");
             vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
         }
+    }
 
-        log.info("random thresh {}", multiBitState.getAverageL2L1Ratio());
-
-        // for (int i = 0; i < vector.length; i++) {
-        // float aboveThreshold = multiBitState.getAboveThresholdMeans()[i];
-        // float belowThreshold = multiBitState.getBelowThresholdMeans()[i];
-
-        // vector[i] = (vector[i] - belowThreshold) / (aboveThreshold - belowThreshold);
-
-        // // if (vector[i] < 0.0f) vector[i] = 0.0f;
-        // // if (vector[i] > 1.0f) vector[i] = 1.0f;
-        // // vector[i] = vector[i] >= binaryState.getMeanThresholds()[i] ? 1.0f : 0.0f;
-
-        // // vector[i] = vector[i] < binaryState.getMeanThresholds()[i] ? 1.0f : 0.0f;
-        // }
-
-        // multiBitState.getAboveThresholdMeans()
-        // multiBitState.
+    public void transformWithADC(
+        float[] vector, final QuantizationState state, final String spaceType
+    ) {
+        transform(vector, state);
     }
 
     /**

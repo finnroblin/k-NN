@@ -127,7 +127,6 @@ public final class MultiBitScalarQuantizationState implements QuantizationState 
 
             FloatArrayWrapper[] wrappedAboveMeans = in.readOptionalArray(FloatArrayWrapper::new, FloatArrayWrapper[]::new);
             this.aboveThresholdMeans = wrappedAboveMeans != null ? wrappedAboveMeans[0].getArray() : null;
-
             this.averageL2L1Ratio = in.readOptionalDouble();
 
             if (in.readBoolean()) {
