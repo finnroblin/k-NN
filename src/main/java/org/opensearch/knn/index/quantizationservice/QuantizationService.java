@@ -7,6 +7,8 @@ package org.opensearch.knn.index.quantizationservice;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
+import lombok.extern.log4j.Log4j2;
+
 import org.apache.lucene.index.FieldInfo;
 import org.opensearch.knn.index.SpaceType;
 import org.opensearch.knn.index.VectorDataType;
@@ -19,10 +21,13 @@ import org.opensearch.knn.quantization.models.quantizationParams.QuantizationPar
 import org.opensearch.knn.quantization.models.quantizationParams.ScalarQuantizationParams;
 import org.opensearch.knn.quantization.models.quantizationState.QuantizationState;
 import org.opensearch.knn.quantization.quantizer.Quantizer;
+
 import java.io.IOException;
 import java.util.function.Supplier;
 
 import static org.opensearch.knn.common.FieldInfoExtractor.extractQuantizationConfig;
+import org.opensearch.knn.quantization.quantizer.OneBitScalarQuantizer;
+
 
 /**
  * A singleton class responsible for handling the quantization process, including training a quantizer
@@ -31,6 +36,7 @@ import static org.opensearch.knn.common.FieldInfoExtractor.extractQuantizationCo
  * @param <T> The type of the input vectors to be quantized.
  * @param <R> The type of the quantized output vectors.
  */
+@Log4j2
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class QuantizationService<T, R> {
 
@@ -103,7 +109,7 @@ public final class QuantizationService<T, R> {
     // {
         Quantizer<T, R> quantizer = QuantizerFactory.getQuantizer(quantizationState.getQuantizationParams());
         // TODO here we need to call an ADC method based on state.
-        quantizer.transform(vector, quantizationState, spaceType);
+        quantizer.transform(vector, quantizationState);
     }
 
     public void transformWithADC(
@@ -111,7 +117,16 @@ public final class QuantizationService<T, R> {
     ) {
         Quantizer<T, R> quantizer = QuantizerFactory.getQuantizer(quantizationState.getQuantizationParams());
         // TODO here we need to call an ADC method based on state.
+        // if (quantizer instanceof OneBitScalarQuantizer oneBitScalarQuantizer) {
+        //     log.info("quantizationService quantizer called");
+        //     oneBitScalarQuantizer.transformWithADC(vector, quantizationState, spaceType);
+        // } 
+        // else {
+        //     quantizer.transform(vector, quantizationState);
+        // }
+
         quantizer.transformWithADC(vector, quantizationState, spaceType);
+        
     }
 
     /**

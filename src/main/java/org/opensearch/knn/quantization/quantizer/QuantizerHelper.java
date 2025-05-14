@@ -26,7 +26,7 @@ class QuantizerHelper {
      * Threshold for triggering random rotation during training.
      * If average L2/L1 ratio exceeds this value, rotation will be applied.
      */
-    private static final double ROTATION_MATRIX_THRESHOLD = 0.6;
+    private static final double ROTATION_MATRIX_THRESHOLD = 0;
 
     // ========================= ONE BIT ========================= //
 

@@ -16,6 +16,8 @@ import org.opensearch.knn.quantization.sampler.Sampler;
 import org.opensearch.knn.quantization.sampler.SamplerType;
 import org.opensearch.knn.quantization.sampler.SamplingFactory;
 
+import lombok.extern.log4j.Log4j2;
+
 import java.io.IOException;
 
 /**
@@ -23,6 +25,7 @@ import java.io.IOException;
  * It computes the mean of each dimension during training and then uses these means as thresholds
  * for quantizing the vectors.
  */
+@Log4j2
 public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
     private final int samplingSize; // Sampling size for training
     private static final boolean IS_TRAINING_REQUIRED = true;
@@ -97,7 +100,7 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
     }
 
     @Override
-    public void transform(float[] vector, final QuantizationState state, final String spaceType) {
+    public void transform(float[] vector, final QuantizationState state) {
         if (vector == null) {
             return;
         }
@@ -112,26 +115,30 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
             vector[i] = vector[i] >= binaryState.getMeanThresholds()[i] ? 1.0f : 0.0f;
         }
     }
-
+    @Override
     public void transformWithADC(
-        float[] vector, final QuantizationState state, final String spaceType
+        float[] vector, final QuantizationState state, final SpaceType spaceType
     ) {
+        // log.info("transformWithADCCalled");
         validateState(state);
         OneBitScalarQuantizationState binaryState = (OneBitScalarQuantizationState) state;
         float[][] rotationMatrix = binaryState.getRotationMatrix();
         if (rotationMatrix != null) {
+            // log.info("Rotation matrix called");
             vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
         }
 
-        if (shouldDoADCCorrection()) {
-            transformVectorWithADCNoCorrection(vector, binaryState); 
-        } else {
+        if (shouldDoADCCorrection(spaceType)) {
+            // log.info("transform with correction called");
             transformVectorWithADCCorrection(vector, binaryState);
+        } else {
+            // log.info("transform with no correction called");
+            transformVectorWithADCNoCorrection(vector, binaryState);
         }
     }
 
-    private boolean shouldDoADCCorrection() {
-        return SpaceType.equals(SpaceType.L2);
+    private boolean shouldDoADCCorrection(SpaceType spaceType) {
+        return SpaceType.L2.equals(spaceType);
     }
 
     private void transformVectorWithADCNoCorrection(

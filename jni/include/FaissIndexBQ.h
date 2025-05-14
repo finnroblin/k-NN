@@ -651,6 +651,7 @@ namespace knn_jni {
                 this->code_size = code_size;
                 this->dimension = d;
                 correction_amount = 0.0f;
+                // std::cout << "customer flat codes called " << std::endl;
             }
 
             float distance_to_code_l2_unbatched(const uint8_t* code) {
