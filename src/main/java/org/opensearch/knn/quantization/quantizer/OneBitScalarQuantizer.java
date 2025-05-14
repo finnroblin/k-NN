@@ -119,24 +119,24 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
     public void transformWithADC(
         float[] vector, final QuantizationState state, final SpaceType spaceType
     ) {
-        transform(vector, state);
-        // log.info("transformWithADCCalled");
-        // validateState(state);
-        // OneBitScalarQuantizationState binaryState = (OneBitScalarQuantizationState) state;
-        // float[][] rotationMatrix = binaryState.getRotationMatrix();
-        // if (rotationMatrix != null) {
-        //     // log.info("Rotation matrix called");
-        //     vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
-        // }
-        // transformVectorWithADCNoCorrection(vector, binaryState);
+//        transform(vector, state);
+         log.info("transformWithADCCalled");
+         validateState(state);
+         OneBitScalarQuantizationState binaryState = (OneBitScalarQuantizationState) state;
+         float[][] rotationMatrix = binaryState.getRotationMatrix();
+         if (rotationMatrix != null) {
+             // log.info("Rotation matrix called");
+             vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
+         }
+//         transformVectorWithADCNoCorrection(vector, binaryState);
 
-        // if (shouldDoADCCorrection(spaceType)) {
-        //     // log.info("transform with correction called");
-        //     transformVectorWithADCCorrection(vector, binaryState);
-        // } else {
-        //     // log.info("transform with no correction called");
-        //     transformVectorWithADCNoCorrection(vector, binaryState);
-        // }
+         if (shouldDoADCCorrection(spaceType)) {
+             // log.info("transform with correction called");
+             transformVectorWithADCCorrection(vector, binaryState);
+         } else {
+             // log.info("transform with no correction called");
+             transformVectorWithADCNoCorrection(vector, binaryState);
+         }
     }
 
     private boolean shouldDoADCCorrection(SpaceType spaceType) {

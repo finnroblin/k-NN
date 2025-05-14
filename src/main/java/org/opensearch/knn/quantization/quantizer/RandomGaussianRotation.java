@@ -6,9 +6,11 @@
 package org.opensearch.knn.quantization.quantizer;
 
 import lombok.experimental.UtilityClass;
+import lombok.extern.log4j.Log4j2;
 
 import java.util.Random;
 
+@Log4j2
 @UtilityClass
 public class RandomGaussianRotation {
 
@@ -19,7 +21,8 @@ public class RandomGaussianRotation {
      * @return A 2D float array representing the rotation matrix.
      */
     public float[][] generateRotationMatrix(int dimensions) {
-        Random random = new Random();
+        log.info("Generate random rotation matrix called.");
+        Random random = new Random(1212121212);
         float[][] rotationMatrix = new float[dimensions][dimensions];
 
         // Step 1: Generate random Gaussian values
@@ -62,7 +65,7 @@ public class RandomGaussianRotation {
                 rotationMatrix[i][j] /= norm;
             }
         }
-
+        log.info("First entry of rotation matrix is {}, off-diagonal entry is: {}", rotationMatrix[0][0], rotationMatrix[0][1]);
         return rotationMatrix;
     }
 
@@ -74,6 +77,7 @@ public class RandomGaussianRotation {
      * @return The rotated vector.
      */
     public float[] applyRotation(float[] vector, float[][] rotationMatrix) {
+        // log.info("(applyRotation) First entry of rotation matrix is {}", rotationMatrix[0][0]);
         int dimensions = vector.length;
         float[] rotatedVector = new float[dimensions];
 

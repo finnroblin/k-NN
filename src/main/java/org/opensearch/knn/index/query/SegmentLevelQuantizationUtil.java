@@ -29,17 +29,17 @@ public class SegmentLevelQuantizationUtil {
         // return true;
         // return false;
         // here we have to change the triggering based on whether we're in one bit, two bit, 4 bit, etc.
+        return false;
+        // return segmentLevelQuantizationInfo != null
+        //     && (ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.ONE_BIT)
+        //         .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
 
-        return segmentLevelQuantizationInfo != null
-            && (ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.ONE_BIT)
-                .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
+        //         || ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.TWO_BIT)
+        //             .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
+        //         || ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.FOUR_BIT)
+        //             .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
 
-                || ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.TWO_BIT)
-                    .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
-                || ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.FOUR_BIT)
-                    .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
-
-            );
+        //     );
     }
 
     // public static float[] getAboveThresholdMeans(SegmentLevelQuantizationInfo segmentLevelQuantizationInfo) {

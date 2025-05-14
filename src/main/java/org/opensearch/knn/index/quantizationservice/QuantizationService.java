@@ -124,9 +124,7 @@ public final class QuantizationService<T, R> {
         // else {
         //     quantizer.transform(vector, quantizationState);
         // }
-
         quantizer.transformWithADC(vector, quantizationState, spaceType);
-        
     }
 
     /**
