@@ -470,7 +470,7 @@ public class KNNWeight extends Weight {
 
         float[] transformedVector = null;
         if (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)) {
-            log.info("adc enabled clearly");
+            // log.info("adc enabled clearly");
             transformedVector = knnQuery.getQueryVector().clone();
             // TODO pass through the space type here.
             // SegmentLevelQuantizationUtil.transformVector(transformedVector, segmentLevelQuantizationInfo);
