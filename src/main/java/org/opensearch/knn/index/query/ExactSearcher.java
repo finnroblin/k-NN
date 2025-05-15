@@ -204,6 +204,7 @@ public class ExactSearcher {
             segmentLevelQuantizationInfo = SegmentLevelQuantizationInfo.build(reader, fieldInfo, knnQuery.getField());
             // Quantize the Query Vector Once. Or transform it
             if (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)) {
+                log.info("calling the transformvector adc method!");
                 SegmentLevelQuantizationUtil.transformVector(knnQuery.getQueryVector(), segmentLevelQuantizationInfo);
             } else {
                 quantizedQueryVector = SegmentLevelQuantizationUtil.quantizeVector(knnQuery.getQueryVector(), segmentLevelQuantizationInfo);

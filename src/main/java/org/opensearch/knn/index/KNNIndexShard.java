@@ -6,9 +6,11 @@
 package org.opensearch.knn.index;
 
 import com.google.common.annotations.VisibleForTesting;
+
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.extern.log4j.Log4j2;
+
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.LeafReaderContext;
@@ -43,6 +45,7 @@ import static org.opensearch.knn.common.KNNConstants.VECTOR_DATA_TYPE_FIELD;
 import static org.opensearch.knn.index.util.IndexUtil.getParametersAtLoading;
 import static org.opensearch.knn.index.codec.util.KNNCodecUtil.buildEngineFilePrefix;
 import static org.opensearch.knn.index.codec.util.KNNCodecUtil.buildEngineFileSuffix;
+import org.opensearch.knn.index.query.SegmentLevelQuantizationUtil;
 
 /**
  * KNNIndexShard wraps IndexShard and adds methods to perform k-NN related operations against the shard
@@ -98,6 +101,7 @@ public class KNNIndexShard {
                         engineFileContext.vectorFileName,
                         engineFileContext.segmentInfo
                     );
+                    final SegmentLevelQuantizationInfo segmentLevelQuantizationInfo = engineFileContext.getSegmentLevelQuantizationInfo();
                     nativeMemoryCacheManager.get(
                         new NativeMemoryEntryContext.IndexEntryContext(
                             directory,
@@ -107,9 +111,8 @@ public class KNNIndexShard {
                                 engineFileContext.getSpaceType(),
                                 KNNEngine.getEngineNameFromPath(engineFileContext.getVectorFileName()),
                                 getIndexName(),
-                                engineFileContext.getVectorDataType(), // TODO: ADC integration here!!
-                                // VectorDataType.FLOAT,
-                                engineFileContext.getSegmentLevelQuantizationInfo()
+                                SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo) ? VectorDataType.FLOAT : engineFileContext.getVectorDataType(),
+                                segmentLevelQuantizationInfo
                             ),
                             getIndexName(),
                             engineFileContext.getModelId()
@@ -201,18 +204,18 @@ public class KNNIndexShard {
                             fileExtension,
                             spaceType,
                             modelId,
-                            FieldInfoExtractor.extractQuantizationConfig(fieldInfo) == QuantizationConfig.EMPTY
-                                ? VectorDataType.get(
-                                    fieldInfo.attributes().getOrDefault(VECTOR_DATA_TYPE_FIELD, VectorDataType.FLOAT.getValue())
-                                )
-                                : VectorDataType.BINARY
                             // FieldInfoExtractor.extractQuantizationConfig(fieldInfo) == QuantizationConfig.EMPTY
-                            // ? VectorDataType.get(
-                            // fieldInfo.attributes().getOrDefault(VECTOR_DATA_TYPE_FIELD, VectorDataType.FLOAT.getValue())
-                            // )
-                            // : (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)
-                            // ? VectorDataType.FLOAT
-                            // : VectorDataType.BINARY) // TODO fix ugly nested ternary
+                            //     ? VectorDataType.get(
+                            //         fieldInfo.attributes().getOrDefault(VECTOR_DATA_TYPE_FIELD, VectorDataType.FLOAT.getValue())
+                            //     )
+                            //     : VectorDataType.BINARY
+                            FieldInfoExtractor.extractQuantizationConfig(fieldInfo) == QuantizationConfig.EMPTY
+                            ? VectorDataType.get(
+                            fieldInfo.attributes().getOrDefault(VECTOR_DATA_TYPE_FIELD, VectorDataType.FLOAT.getValue())
+                            )
+                            : (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)
+                            ? VectorDataType.FLOAT
+                            : VectorDataType.BINARY) // TODO fix ugly nested ternary
                         )
                     );
                 }

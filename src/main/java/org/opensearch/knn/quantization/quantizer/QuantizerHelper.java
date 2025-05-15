@@ -10,6 +10,7 @@ import org.opensearch.knn.quantization.models.quantizationState.MultiBitScalarQu
 import org.opensearch.knn.quantization.models.quantizationState.OneBitScalarQuantizationState;
 import org.opensearch.knn.quantization.models.requests.TrainingRequest;
 import lombok.experimental.UtilityClass;
+import lombok.extern.log4j.Log4j2;
 import oshi.util.tuples.Pair;
 
 import java.io.IOException;
@@ -19,6 +20,7 @@ import java.io.IOException;
  * OneBit and MultiBit scalar quantizers. Handles computing thresholds,
  * below/above mean statistics, L2/L1 ratios, and rotation matrix application.
  */
+@Log4j2
 @UtilityClass
 class QuantizerHelper {
 
@@ -51,14 +53,16 @@ class QuantizerHelper {
         double averageL2L1Ratio = meanAndL2L1.getB();
 
         float[][] rotationMatrix = maybeApplyRotation(meanThresholds, averageL2L1Ratio);
-        if (rotationMatrix != null) {
-            meanThresholds = RandomGaussianRotation.applyRotation(meanThresholds, rotationMatrix);
-        }
+        
 
         trainingRequest.resetVectorValues();
         Pair<float[], float[]> belowAbove = calculateBelowAboveThresholdMeans(trainingRequest, meanThresholds, sampledIndices);
 
+        // TODO this bit is wrong.
         if (rotationMatrix != null) {
+            
+            meanThresholds = RandomGaussianRotation.applyRotation(meanThresholds, rotationMatrix);
+        
             belowAbove = new Pair<>(
                 RandomGaussianRotation.applyRotation(belowAbove.getA(), rotationMatrix),
                 RandomGaussianRotation.applyRotation(belowAbove.getB(), rotationMatrix)
@@ -102,13 +106,14 @@ class QuantizerHelper {
         float[][] thresholds = calculateThresholds(meanStd.getA(), meanStd.getB(), bitsPerCoordinate);
         float[][] rotationMatrix = null;
 
-        if (meanL2L1.getB() > ROTATION_MATRIX_THRESHOLD) {
-            rotationMatrix = RandomGaussianRotation.generateRotationMatrix(meanStd.getA().length);
-            for (int i = 0; i < thresholds.length; i++) {
-                thresholds[i] = RandomGaussianRotation.applyRotation(thresholds[i], rotationMatrix);
-            }
-        }
+        // if (meanL2L1.getB() > ROTATION_MATRIX_THRESHOLD) {
+            // rotationMatrix = RandomGaussianRotation.generateRotationMatrix(meanStd.getA().length);
+            // for (int i = 0; i < thresholds.length; i++) {
+            //     thresholds[i] = RandomGaussianRotation.applyRotation(thresholds[i], rotationMatrix);
+            // }
+        // }
 
+        // get above/below thresholds before rotation.
         trainingRequest.resetVectorValues();
         Pair<float[], float[]> belowAbove = calculateBelowAboveThresholdMeans(
             trainingRequest,
@@ -116,8 +121,19 @@ class QuantizerHelper {
             bitsPerCoordinate,
             sampledIndices
         );
+        
 
+        if (meanL2L1.getB() > ROTATION_MATRIX_THRESHOLD) {
+            rotationMatrix = RandomGaussianRotation.generateRotationMatrix(meanStd.getA().length);
+        }
+        
+        // apply rotation first to thresholds, then to above/below threshold means.
         if (rotationMatrix != null) {
+            rotationMatrix = RandomGaussianRotation.generateRotationMatrix(meanStd.getA().length);
+            for (int i = 0; i < thresholds.length; i++) {
+                thresholds[i] = RandomGaussianRotation.applyRotation(thresholds[i], rotationMatrix);
+            }
+
             belowAbove = new Pair<>(
                 RandomGaussianRotation.applyRotation(belowAbove.getA(), rotationMatrix),
                 RandomGaussianRotation.applyRotation(belowAbove.getB(), rotationMatrix)
@@ -201,13 +217,14 @@ class QuantizerHelper {
         int[] belowCount = new int[dim], aboveCount = new int[dim];
 
         for (int docId : sampledIndices) {
-            float[] vector = request.getVectorAtThePosition(docId);
+            float[] vector = request.getVectorAtThePosition(docId); // is this vector rotated?
+            // log.info("vector 1st value is: {}", vector[0]);
             if (vector == null) {
                 throw new IllegalArgumentException("Vector at sampled index " + docId + " is null.");
             }
 
             for (int d = 0; d < dim; d++) {
-                if (vector[d] <= thresholds[d]) {
+                if (vector[d] <= thresholds[d]) { // thresholds have been rotated.
                     below[d] += vector[d];
                     belowCount[d]++;
                 } else {
