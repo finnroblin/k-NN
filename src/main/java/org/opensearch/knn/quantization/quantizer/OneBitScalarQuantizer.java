@@ -142,8 +142,8 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
             transformVectorWithADCCorrection(rotatedVector, binaryState);
         } else {
             // log.info("transform with no correction called");
-            // transformVectorWithADCNoCorrection(vector, binaryState);
-            transformVectorWithADCCorrection(rotatedVector, binaryState);
+            transformVectorWithADCNoCorrection(vector, binaryState);
+            // transformVectorWithADCCorrection(rotatedVector, binaryState);
         }
         // vector = rotatedVector;
         // log.info("vector now is: {}", vector);
