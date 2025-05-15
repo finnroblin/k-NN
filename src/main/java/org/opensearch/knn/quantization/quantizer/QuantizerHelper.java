@@ -47,27 +47,34 @@ class QuantizerHelper {
         ScalarQuantizationParams quantizationParams
     ) throws IOException {
         validateSampledIndices(sampledIndices);
+        int first_vec_idx = sampledIndices[0];
+        int dim = trainingRequest.getVectorAtThePosition(first_vec_idx).length;
 
-        Pair<float[], Double> meanAndL2L1 = calculateMeanAndL2L1Ratio(trainingRequest, sampledIndices);
+        trainingRequest.resetVectorValues();
+
+        float[][] rotationMatrix = RandomGaussianRotation.generateRotationMatrix(dim);
+        log.info("first calc quant state value of rot mat: {}", rotationMatrix[0][0]);
+        // equivalent to 
+        Pair<float[], Double> meanAndL2L1 = calculateMeanAndL2L1Ratio(trainingRequest, sampledIndices, rotationMatrix);
+
         float[] meanThresholds = meanAndL2L1.getA();
         double averageL2L1Ratio = meanAndL2L1.getB();
 
-        float[][] rotationMatrix = maybeApplyRotation(meanThresholds, averageL2L1Ratio);
+        // meanThresholds = RandomGaussianRotation.applyRotation(meanThresholds, rotationMatrix);
         
-
         trainingRequest.resetVectorValues();
-        Pair<float[], float[]> belowAbove = calculateBelowAboveThresholdMeans(trainingRequest, meanThresholds, sampledIndices);
-
-        // TODO this bit is wrong.
-        if (rotationMatrix != null) {
-            
-            meanThresholds = RandomGaussianRotation.applyRotation(meanThresholds, rotationMatrix);
+        Pair<float[], float[]> belowAbove = calculateBelowAboveThresholdMeans(trainingRequest, meanThresholds, sampledIndices, rotationMatrix);
         
-            belowAbove = new Pair<>(
-                RandomGaussianRotation.applyRotation(belowAbove.getA(), rotationMatrix),
-                RandomGaussianRotation.applyRotation(belowAbove.getB(), rotationMatrix)
-            );
-        }
+        // TODO this bit is wrong.
+        // if (rotationMatrix != null) {
+        //     meanThresholds = RandomGaussianRotation.applyRotation(meanThresholds, rotationMatrix);
+        //     trainingRequest.resetVectorValues();
+        //     belowAbove = calculateBelowAboveThresholdMeans(trainingRequest, meanThresholds, sampledIndices, rotationMatrix);
+            // belowAbove = new Pair<>(
+            //     RandomGaussianRotation.applyRotation(belowAbove.getA(), rotationMatrix),
+            //     RandomGaussianRotation.applyRotation(belowAbove.getB(), rotationMatrix)
+            // );
+        // }
 
         return OneBitScalarQuantizationState.builder()
             .quantizationParams(quantizationParams)
@@ -197,7 +204,13 @@ class QuantizerHelper {
         }
         return thresholds;
     }
-
+    private static Pair<float[], float[]> calculateBelowAboveThresholdMeans(
+        TrainingRequest<float[]> request,
+        float[] thresholds,
+        int[] sampledIndices
+    ) throws IOException {
+        return calculateBelowAboveThresholdMeans(request, thresholds, sampledIndices, null);
+    }
     /**
      * Calculates the below and above threshold means for a one-bit quantizer.
      *
@@ -210,21 +223,30 @@ class QuantizerHelper {
     private static Pair<float[], float[]> calculateBelowAboveThresholdMeans(
         TrainingRequest<float[]> request,
         float[] thresholds,
-        int[] sampledIndices
+        int[] sampledIndices, float[][] rotationMatrix
     ) throws IOException {
         int dim = thresholds.length;
         float[] below = new float[dim], above = new float[dim];
         int[] belowCount = new int[dim], aboveCount = new int[dim];
 
         for (int docId : sampledIndices) {
-            float[] vector = request.getVectorAtThePosition(docId); // is this vector rotated?
+            float[] vector = request.getVectorAtThePosition(docId).clone(); // vector is not rotated.
+            if (
+                rotationMatrix != null
+            )  {
+                // log.info("logging with rotation, before 0th {}", vector[0]);
+                vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
+            }
             // log.info("vector 1st value is: {}", vector[0]);
             if (vector == null) {
                 throw new IllegalArgumentException("Vector at sampled index " + docId + " is null.");
             }
 
             for (int d = 0; d < dim; d++) {
+                // vector has been rotated.
                 if (vector[d] <= thresholds[d]) { // thresholds have been rotated.
+                    // threshold were generated from unrotated vectors and then rotated.
+                // if (vector[d] <= 0.0f) {
                     below[d] += vector[d];
                     belowCount[d]++;
                 } else {
@@ -242,6 +264,14 @@ class QuantizerHelper {
         return new Pair<>(below, above);
     }
 
+    // private static Pair<float[], float[]> calculateBelowAboveThresholdMeans(
+    //     TrainingRequest<float[]> request,
+    //     float[][] thresholds,
+    //     int bitsPerCoordinate,
+    //     int[] sampledIndices
+    // ) {
+    //     return calculateBelowAboveThresholdMeans(request, thresholds, bitsPerCoordinate, sampledIndices, false);
+    // }
     /**
      * Calculates below/above means for a multi-bit quantizer.
      *
@@ -334,6 +364,12 @@ class QuantizerHelper {
         return new Pair<>(mean, sumSq);
     }
 
+    public static Pair<float[], Double> calculateMeanAndL2L1Ratio(TrainingRequest<float[]> request, int[] sampledIndices)throws IOException {
+        return calculateMeanAndL2L1Ratio(
+            request, sampledIndices, null
+        );
+    }
+
     /**
      * Calculates per-dimension mean and average L2/L1 norm ratio.
      *
@@ -342,16 +378,22 @@ class QuantizerHelper {
      * @return Pair of (means[], average L2/L1 ratio).
      * @throws IOException if vector access fails.
      */
-    public static Pair<float[], Double> calculateMeanAndL2L1Ratio(TrainingRequest<float[]> request, int[] sampledIndices)
+    public static Pair<float[], Double> calculateMeanAndL2L1Ratio(TrainingRequest<float[]> request, int[] sampledIndices, float[][] rotationMatrix)
         throws IOException {
         float[] mean = null;
         double totalL2L1 = 0.0;
         int n = sampledIndices.length;
 
         for (int docId : sampledIndices) {
-            float[] vector = request.getVectorAtThePosition(docId);
+            float[] vector = request.getVectorAtThePosition(docId).clone();
+            
             if (vector == null) {
                 throw new IllegalArgumentException("Vector at sampled index " + docId + " is null.");
+            }
+
+            if (rotationMatrix != null ) {
+                // log.info("rotating vector in calc mean and l2 ratio");
+                vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
             }
 
             if (mean == null) mean = new float[vector.length];
