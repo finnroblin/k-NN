@@ -29,7 +29,6 @@ import org.opensearch.knn.index.memory.NativeMemoryEntryContext;
 import org.opensearch.knn.index.memory.NativeMemoryLoadStrategy;
 import org.opensearch.knn.index.engine.KNNEngine;
 import org.opensearch.knn.index.query.SegmentLevelQuantizationInfo;
-import org.opensearch.knn.index.query.SegmentLevelQuantizationUtil;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -90,7 +89,7 @@ public class KNNIndexShard {
      * @throws IOException Thrown when getting the HNSW Paths to be loaded in
      */
     public void warmup() throws IOException {
-        // log.info("[KNN] Warming up index: [{}]", getIndexName());
+        log.info("[KNN] Warming up index: [{}]", getIndexName());
         final Directory directory = indexShard.store().directory();
         try (Engine.Searcher searcher = indexShard.acquireSearcher("knn-warmup")) {
             getAllEngineFileContexts(searcher.getIndexReader()).forEach((engineFileContext) -> {
@@ -108,8 +107,8 @@ public class KNNIndexShard {
                                 engineFileContext.getSpaceType(),
                                 KNNEngine.getEngineNameFromPath(engineFileContext.getVectorFileName()),
                                 getIndexName(),
-                                // engineFileContext.getVectorDataType(),
-                                VectorDataType.FLOAT,
+                                engineFileContext.getVectorDataType(), // TODO: ADC integration here!!
+                                // VectorDataType.FLOAT,
                                 engineFileContext.getSegmentLevelQuantizationInfo()
                             ),
                             getIndexName(),
@@ -202,18 +201,18 @@ public class KNNIndexShard {
                             fileExtension,
                             spaceType,
                             modelId,
-                            // FieldInfoExtractor.extractQuantizationConfig(fieldInfo) == QuantizationConfig.EMPTY
-                            // ? VectorDataType.get(
-                            // fieldInfo.attributes().getOrDefault(VECTOR_DATA_TYPE_FIELD, VectorDataType.FLOAT.getValue())
-                            // )
-                            // : VectorDataType.BINARY
                             FieldInfoExtractor.extractQuantizationConfig(fieldInfo) == QuantizationConfig.EMPTY
                                 ? VectorDataType.get(
                                     fieldInfo.attributes().getOrDefault(VECTOR_DATA_TYPE_FIELD, VectorDataType.FLOAT.getValue())
                                 )
-                                : (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)
-                                    ? VectorDataType.FLOAT
-                                    : VectorDataType.BINARY) // TODO fix ugly nested ternary
+                                : VectorDataType.BINARY
+                            // FieldInfoExtractor.extractQuantizationConfig(fieldInfo) == QuantizationConfig.EMPTY
+                            // ? VectorDataType.get(
+                            // fieldInfo.attributes().getOrDefault(VECTOR_DATA_TYPE_FIELD, VectorDataType.FLOAT.getValue())
+                            // )
+                            // : (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)
+                            // ? VectorDataType.FLOAT
+                            // : VectorDataType.BINARY) // TODO fix ugly nested ternary
                         )
                     );
                 }

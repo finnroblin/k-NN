@@ -182,9 +182,7 @@ public class MultiBitScalarQuantizer implements Quantizer<float[], byte[]> {
         }
     }
 
-    public void transformWithADC(
-        float[] vector, final QuantizationState state, final String spaceType
-    ) {
+    public void transformWithADC(float[] vector, final QuantizationState state, final String spaceType) {
         transform(vector, state);
     }
 

@@ -21,7 +21,7 @@ public class RandomGaussianRotation {
      * @return A 2D float array representing the rotation matrix.
      */
     public float[][] generateRotationMatrix(int dimensions) {
-        log.info("Generate random rotation matrix called.");
+        // log.info("Generate random rotation matrix called.");
         Random random = new Random(1212121212);
         float[][] rotationMatrix = new float[dimensions][dimensions];
 
@@ -65,7 +65,7 @@ public class RandomGaussianRotation {
                 rotationMatrix[i][j] /= norm;
             }
         }
-        log.info("First entry of rotation matrix is {}, off-diagonal entry is: {}", rotationMatrix[0][0], rotationMatrix[0][1]);
+        // log.info("First entry of rotation matrix is {}, off-diagonal entry is: {}", rotationMatrix[0][0], rotationMatrix[0][1]);
         return rotationMatrix;
     }
 

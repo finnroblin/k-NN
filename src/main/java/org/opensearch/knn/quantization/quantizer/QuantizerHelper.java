@@ -23,7 +23,7 @@ import java.io.IOException;
 class QuantizerHelper {
 
     /**
-     * Threshold for triggering random rotation during training.
+     * Threshold for triggering random rotation during training.''
      * If average L2/L1 ratio exceeds this value, rotation will be applied.
      */
     private static final double ROTATION_MATRIX_THRESHOLD = 0.0;
@@ -175,7 +175,9 @@ class QuantizerHelper {
             float iCoef = -1 + 2 * (b + 1) / coef;
             for (int d = 0; d < dim; d++) {
                 thresholds[b][d] = mean[d] + iCoef * stdDev[d];
-            }
+            } // b = 9
+              // -1 + 2 / 2
+              // 0
         }
         return thresholds;
     }

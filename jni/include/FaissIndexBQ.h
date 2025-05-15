@@ -716,8 +716,10 @@ namespace knn_jni {
                 assert(this->query != nullptr); // make sure we've already set the query
                 this->coord_scores = std::vector<float>(this->dimension, 0.0f);
                 if (this->metric_type == faiss::METRIC_L2) {
+                    std::cout << "computing with L2 metric" << std::endl;
                     compute_cord_scores_l2(); // todo make this templated based on space type.
                 } else if (this->metric_type == faiss::METRIC_INNER_PRODUCT) {
+                    std::cout << "computer with IP metric" << std::endl;
                     compute_cord_scores_inner_product(); 
                 }
                 
@@ -739,9 +741,12 @@ namespace knn_jni {
             }
 
             void compute_cord_scores_inner_product() {
-                // assert(query != nullptr);
+                
                 for (int i = 0 ; i < this->dimension; ++i) {
-                    // float x =;
+                    
+                    // query: 1 -2 4 5
+                    // codes: 0  1 0 1
+                    // inner_prod(query, codes) = 0 * 1 + -2 * 1 + 4 * 0 + 5 * 1
                     this->coord_scores[i] = query[i];
                     // correction_amount += x * x;
                 }

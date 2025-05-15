@@ -26,8 +26,6 @@ import java.io.IOException;
 import java.util.function.Supplier;
 
 import static org.opensearch.knn.common.FieldInfoExtractor.extractQuantizationConfig;
-import org.opensearch.knn.quantization.quantizer.OneBitScalarQuantizer;
-
 
 /**
  * A singleton class responsible for handling the quantization process, including training a quantizer
@@ -104,25 +102,23 @@ public final class QuantizationService<T, R> {
      * @param vector The vector to be transformed.
      */
     public void transform(final QuantizationState quantizationState, final T vector) {
-    // final String spaceType 
-    // ) 
-    // {
+        // final String spaceType
+        // )
+        // {
         Quantizer<T, R> quantizer = QuantizerFactory.getQuantizer(quantizationState.getQuantizationParams());
         // TODO here we need to call an ADC method based on state.
         quantizer.transform(vector, quantizationState);
     }
 
-    public void transformWithADC(
-        final QuantizationState quantizationState, final T vector, final SpaceType spaceType
-    ) {
+    public void transformWithADC(final QuantizationState quantizationState, final T vector, final SpaceType spaceType) {
         Quantizer<T, R> quantizer = QuantizerFactory.getQuantizer(quantizationState.getQuantizationParams());
         // TODO here we need to call an ADC method based on state.
         // if (quantizer instanceof OneBitScalarQuantizer oneBitScalarQuantizer) {
-        //     log.info("quantizationService quantizer called");
-        //     oneBitScalarQuantizer.transformWithADC(vector, quantizationState, spaceType);
-        // } 
+        // log.info("quantizationService quantizer called");
+        // oneBitScalarQuantizer.transformWithADC(vector, quantizationState, spaceType);
+        // }
         // else {
-        //     quantizer.transform(vector, quantizationState);
+        // quantizer.transform(vector, quantizationState);
         // }
         quantizer.transformWithADC(vector, quantizationState, spaceType);
     }

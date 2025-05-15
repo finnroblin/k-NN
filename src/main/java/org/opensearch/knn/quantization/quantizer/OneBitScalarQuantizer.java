@@ -67,7 +67,7 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
         return QuantizerHelper.calculateQuantizationState(
             trainingRequest,
             sampledDocIds,
-        new ScalarQuantizationParams(ScalarQuantizationType.ONE_BIT)
+            new ScalarQuantizationParams(ScalarQuantizationType.ONE_BIT)
         );
     }
 
@@ -93,6 +93,7 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
         }
         float[][] rotationMatrix = binaryState.getRotationMatrix();
         if (rotationMatrix != null) {
+            // log.info("applying random rotation without adc");
             vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
         }
         output.prepareQuantizedVector(vectorLength);
@@ -115,37 +116,34 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
             vector[i] = vector[i] >= binaryState.getMeanThresholds()[i] ? 1.0f : 0.0f;
         }
     }
-    @Override
-    public void transformWithADC(
-        float[] vector, final QuantizationState state, final SpaceType spaceType
-    ) {
-//        transform(vector, state);
-         log.info("transformWithADCCalled");
-         validateState(state);
-         OneBitScalarQuantizationState binaryState = (OneBitScalarQuantizationState) state;
-         float[][] rotationMatrix = binaryState.getRotationMatrix();
-         if (rotationMatrix != null) {
-             // log.info("Rotation matrix called");
-             vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
-         }
-//         transformVectorWithADCNoCorrection(vector, binaryState);
 
-         if (shouldDoADCCorrection(spaceType)) {
-             // log.info("transform with correction called");
-             transformVectorWithADCCorrection(vector, binaryState);
-         } else {
-             // log.info("transform with no correction called");
-             transformVectorWithADCNoCorrection(vector, binaryState);
-         }
+    @Override
+    public void transformWithADC(float[] vector, final QuantizationState state, final SpaceType spaceType) {
+        // transform(vector, state);
+        log.info("transformWithADCCalled");
+        validateState(state);
+        OneBitScalarQuantizationState binaryState = (OneBitScalarQuantizationState) state;
+        float[][] rotationMatrix = binaryState.getRotationMatrix();
+        if (rotationMatrix != null) {
+            // log.info("Rotation matrix called");
+            vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
+        }
+        // transformVectorWithADCNoCorrection(vector, binaryState);
+
+        if (shouldDoADCCorrection(spaceType)) {
+            // log.info("transform with correction called");
+            transformVectorWithADCCorrection(vector, binaryState);
+        } else {
+            // log.info("transform with no correction called");
+            transformVectorWithADCNoCorrection(vector, binaryState);
+        }
     }
 
     private boolean shouldDoADCCorrection(SpaceType spaceType) {
         return SpaceType.L2.equals(spaceType);
     }
 
-    private void transformVectorWithADCNoCorrection(
-        float[] vector , final OneBitScalarQuantizationState binaryState 
-    ) {
+    private void transformVectorWithADCNoCorrection(float[] vector, final OneBitScalarQuantizationState binaryState) {
         for (int i = 0; i < vector.length; ++i) {
             float aboveThreshold = binaryState.getAboveThresholdMeans()[i];
             float belowThreshold = binaryState.getBelowThresholdMeans()[i];
@@ -154,9 +152,7 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
         }
     }
 
-    private void transformVectorWithADCCorrection(
-        float[] vector , final OneBitScalarQuantizationState binaryState 
-    ) {
+    private void transformVectorWithADCCorrection(float[] vector, final OneBitScalarQuantizationState binaryState) {
         for (int i = 0; i < vector.length; i++) {
             float aboveThreshold = binaryState.getAboveThresholdMeans()[i];
             float belowThreshold = binaryState.getBelowThresholdMeans()[i];

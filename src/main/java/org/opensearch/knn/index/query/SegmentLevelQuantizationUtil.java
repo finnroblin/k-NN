@@ -10,8 +10,6 @@ import org.apache.lucene.index.LeafReader;
 import org.opensearch.knn.index.SpaceType;
 import org.opensearch.knn.index.codec.KNN990Codec.QuantizationConfigKNNCollector;
 import org.opensearch.knn.index.quantizationservice.QuantizationService;
-import org.opensearch.knn.quantization.enums.ScalarQuantizationType;
-import org.opensearch.knn.quantization.models.quantizationParams.ScalarQuantizationParams;
 import org.opensearch.knn.quantization.models.quantizationState.QuantizationState;
 
 import java.io.IOException;
@@ -31,15 +29,15 @@ public class SegmentLevelQuantizationUtil {
         // here we have to change the triggering based on whether we're in one bit, two bit, 4 bit, etc.
         return false;
         // return segmentLevelQuantizationInfo != null
-        //     && (ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.ONE_BIT)
-        //         .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
+        // && (ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.ONE_BIT)
+        // .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
 
-        //         || ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.TWO_BIT)
-        //             .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
-        //         || ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.FOUR_BIT)
-        //             .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
+        // || ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.TWO_BIT)
+        // .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
+        // || ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.FOUR_BIT)
+        // .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
 
-        //     );
+        // );
     }
 
     // public static float[] getAboveThresholdMeans(SegmentLevelQuantizationInfo segmentLevelQuantizationInfo) {
@@ -80,16 +78,17 @@ public class SegmentLevelQuantizationUtil {
         quantizationService.transform(segmentLevelQuantizationInfo.getQuantizationState(), vector);
     }
 
-    public static void transformVectorWithADC(final float[] vector, final SegmentLevelQuantizationInfo segmentLevelQuantizationInfo,
-    SpaceType spaceType) {
+    public static void transformVectorWithADC(
+        final float[] vector,
+        final SegmentLevelQuantizationInfo segmentLevelQuantizationInfo,
+        SpaceType spaceType
+    ) {
         if (segmentLevelQuantizationInfo == null) {
             return;
         }
         final QuantizationService quantizationService = QuantizationService.getInstance();
         // quantizationService.transform(segmentLevelQuantizationInfo.getQuantizationState(), vector);
-        quantizationService.transformWithADC(
-            segmentLevelQuantizationInfo.getQuantizationState(), vector, spaceType
-        );
+        quantizationService.transformWithADC(segmentLevelQuantizationInfo.getQuantizationState(), vector, spaceType);
     }
 
     /**
