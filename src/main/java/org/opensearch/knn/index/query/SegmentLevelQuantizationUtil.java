@@ -89,9 +89,9 @@ public class SegmentLevelQuantizationUtil {
         }
         final QuantizationService quantizationService = QuantizationService.getInstance();
         // quantizationService.transform(segmentLevelQuantizationInfo.getQuantizationState(), vector);
-        log.info("vector before: {}", vector);
+        // log.info("vector before: {}", vector);
         quantizationService.transformWithADC(segmentLevelQuantizationInfo.getQuantizationState(), vector, spaceType);
-        log.info("vector after: {}", vector);
+        // log.info("vector after: {}", vector);
     }
 
     /**

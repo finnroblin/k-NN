@@ -716,10 +716,10 @@ namespace knn_jni {
                 assert(this->query != nullptr); // make sure we've already set the query
                 this->coord_scores = std::vector<float>(this->dimension, 0.0f);
                 if (this->metric_type == faiss::METRIC_L2) {
-                    std::cout << "computing with L2 metric" << std::endl;
+                    // std::cout << "computing with L2 metric" << std::endl;
                     compute_cord_scores_l2(); // todo make this templated based on space type.
                 } else if (this->metric_type == faiss::METRIC_INNER_PRODUCT) {
-                    std::cout << "computer with IP metric" << std::endl;
+                    // std::cout << "computer with IP metric" << std::endl;
                     compute_cord_scores_inner_product(); 
                 }
                 
@@ -805,7 +805,7 @@ namespace knn_jni {
                 std::vector<uint8_t> * codes_ptr,
                 faiss::MetricType metric=faiss::METRIC_L2
             ) : IndexFlatCodes(d/8, d, metric) {
-                std::cout << " in the proper constructor, hopefully it works!" << std::endl;
+                // std::cout << " in the proper constructor, hopefully it works!" << std::endl;
                 this->code_size = (d/ 8);
             }
             

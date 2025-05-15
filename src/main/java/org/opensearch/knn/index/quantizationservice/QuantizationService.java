@@ -120,9 +120,9 @@ public final class QuantizationService<T, R> {
         // else {
         // quantizer.transform(vector, quantizationState);
         // }
-        log.info("vector before : {}", vector);
+        // log.info("vector before : {}", vector);
         quantizer.transformWithADC(vector, quantizationState, spaceType);
-        log.info("vector after : {}", vector);
+        // log.info("vector after : {}", vector);
     }
 
     /**

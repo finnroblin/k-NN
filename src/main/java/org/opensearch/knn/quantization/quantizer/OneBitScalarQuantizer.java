@@ -93,8 +93,8 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
         }
         float[][] rotationMatrix = binaryState.getRotationMatrix();
         if (rotationMatrix != null) {
-            log.info("applying random rotation without adc");
-            log.info("first calc quant state va in the bit packing!!!! lue of rot mat: {}", rotationMatrix[0][0]);
+            // log.info("applying random rotation without adc");
+            // log.info("first calc quant state va in the bit packing!!!! lue of rot mat: {}", rotationMatrix[0][0]);
             vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
         }
         output.prepareQuantizedVector(vectorLength);
@@ -121,19 +121,19 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
     @Override
     public void transformWithADC(float[] vector, final QuantizationState state, final SpaceType spaceType) {
         // transform(vector, state);
-        log.info("transformWithADCCalled");
+        // log.info("transformWithADCCalled");
         validateState(state);
         OneBitScalarQuantizationState binaryState = (OneBitScalarQuantizationState) state;
         float[][] rotationMatrix = binaryState.getRotationMatrix();
-        log.info("vec value before rot {}", vector[0]);
+        // log.info("vec value before rot {}", vector[0]);
         float[] rotatedVector = vector.clone();
         if (rotationMatrix != null) {
-            log.info("Rotation matrix called");
-            log.info("first transfomr w adc value of rot mat: {}", rotationMatrix[0][0]);
+            // log.info("Rotation matrix called");
+            // log.info("first transfomr w adc value of rot mat: {}", rotationMatrix[0][0]);
 
             rotatedVector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
         }
-        log.info("vec value after rot {}", vector[0]);
+        // log.info("vec value after rot {}", vector[0]);
         // transformVectorWithADCNoCorrection(vector, binaryState);
 
         if (shouldDoADCCorrection(spaceType)) {
@@ -146,9 +146,9 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
             transformVectorWithADCCorrection(rotatedVector, binaryState);
         }
         // vector = rotatedVector;
-        log.info("vector now is: {}", vector);
+        // log.info("vector now is: {}", vector);
         System.arraycopy(rotatedVector, 0, vector, 0, vector.length);
-        log.info("vector now is: {}", vector);
+        // log.info("vector now is: {}", vector);
     }
 
     private boolean shouldDoADCCorrection(SpaceType spaceType) {
@@ -165,7 +165,7 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
     }
 
     private void transformVectorWithADCCorrection(float[] vector, final OneBitScalarQuantizationState binaryState) {
-        log.info("vec value in the actual adc func {}", vector[0]);
+        // log.info("vec value in the actual adc func {}", vector[0]);
         for (int i = 0; i < vector.length; i++) {
             float aboveThreshold = binaryState.getAboveThresholdMeans()[i];
             float belowThreshold = binaryState.getBelowThresholdMeans()[i];
@@ -173,7 +173,7 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
             vector[i] = (vector[i] - belowThreshold) / (aboveThreshold - belowThreshold);
             vector[i] = correction * (vector[i] - 0.5f) + 0.5f;
         }
-        log.info("vec value in the actual adc func  after trans {}", vector[0]);
+        // log.info("vec value in the actual adc func after trans {}", vector[0]);
     }
 
     // private

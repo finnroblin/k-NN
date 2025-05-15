@@ -53,7 +53,7 @@ class QuantizerHelper {
         trainingRequest.resetVectorValues();
 
         float[][] rotationMatrix = RandomGaussianRotation.generateRotationMatrix(dim);
-        log.info("first calc quant state value of rot mat: {}", rotationMatrix[0][0]);
+        // log.info("first calc quant state value of rot mat: {}", rotationMatrix[0][0]);
         // equivalent to
         Pair<float[], Double> meanAndL2L1 = calculateMeanAndL2L1Ratio(trainingRequest, sampledIndices, rotationMatrix);
 

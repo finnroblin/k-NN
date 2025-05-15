@@ -468,7 +468,7 @@ jlong knn_jni::faiss_wrapper::LoadIndexWithStream(faiss::IOReader* ioReader) {
 jlong knn_jni::faiss_wrapper::LoadIndexWithStreamADCAndParams(faiss::IOReader* ioReader, knn_jni::JNIUtilInterface * jniUtil, JNIEnv * env, jobject methodParamsJ) {
     // if ()
     // do we also need env passed in...
-    std::cout << "Load LoadIndexWithStreamADCAndParams called!" << std::endl;
+    // std::cout << "Load LoadIndexWithStreamADCAndParams called!" << std::endl;
     
     auto methodParams = jniUtil->ConvertJavaMapToCppMap(env, methodParamsJ);
 
@@ -654,7 +654,7 @@ jlong knn_jni::faiss_wrapper::LoadIndexWithStreamADC(faiss::IOReader* ioReader, 
         throw std::runtime_error("IOReader cannot be null");
     }
 
-    std::cout << "load index with stream adc called!" << std::endl;
+    // std::cout << "load index with stream adc called!" << std::endl;
 
     // Extract the relevant info from the binary index
     faiss::IndexBinary* indexReader = (faiss::IndexBinary*) LoadBinaryIndexWithStream(ioReader);
