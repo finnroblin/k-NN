@@ -800,30 +800,33 @@ namespace knn_jni {
         };
 
         struct FaissIndexBQ : faiss::IndexFlatCodes {
-            FaissIndexBQ(
-                faiss::idx_t d,
-                std::vector<uint8_t> * codes_ptr,
-                faiss::MetricType metric=faiss::METRIC_L2
-            ) : IndexFlatCodes(d/8, d, metric) {
-                // std::cout << " in the proper constructor, hopefully it works!" << std::endl;
-                this->code_size = (d/ 8);
-            }
+            std::vector<uint8_t> * codes_ptr;
+
+            // FaissIndexBQ(
+            //     faiss::idx_t d,
+            //     std::vector<uint8_t> * codes_ptr,
+            //     faiss::MetricType metric=faiss::METRIC_L2
+            // ) : IndexFlatCodes(d/8, d, metric) {
+            //     // std::cout << " in the proper constructor, hopefully it works!" << std::endl;
+            //     this->code_size = (d/ 8);
+            // }
             
-            
-            FaissIndexBQ(faiss::idx_t d, std::vector<uint8_t> codes, faiss::MetricType metric=faiss::METRIC_L2) 
+            FaissIndexBQ(faiss::idx_t d, std::vector<uint8_t> * codes_ptr, faiss::MetricType metric=faiss::METRIC_L2)
+            // FaissIndexBQ(faiss::idx_t d, std::vector<uint8_t> codes, faiss::MetricType metric=faiss::METRIC_L2) 
             : IndexFlatCodes(d/8, d, metric){
                 // std::cout << "FaissIndexBQ constructor called with codes lenght" << codes.size() << "and codes 0\n" << " and d/8 " << d/8 << " and d " << d << " and metric" << metric;
 //                << codes[0] << "\n";
                 // std::cout << "\nHEREHERHERH\n\n\n\n\n\n\n\n\n";
                 // this->d = d;
-                this->codes = codes;
+                this->codes_ptr = codes_ptr;
+                // this->codes = codes;
                 this->code_size = (d/8);
                 // this->code_size = 16;
             }
 
             void init(faiss::Index * parent, faiss::Index * grand_parent) {
                 // std::cout << "ehreheragainga\n\n\n\n";
-                this->ntotal = this->codes.size() / (this->d / 8);
+                this->ntotal = this->codes_ptr->size() / (this->d / 8);
                 parent->ntotal = this->ntotal;   
                 grand_parent->ntotal = this->ntotal;
             }
@@ -841,7 +844,7 @@ namespace knn_jni {
             //        std::cout << static_cast<int>(code) << " ";
             //    }
 // faiss::METRIC_INNER_PRODUCT
-                return new knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer((const uint8_t*) (this->codes.data()), this->d/8, this->d,
+                return new knn_jni::faiss_wrapper::CustomerFlatCodesDistanceComputer(this->codes_ptr->data(), this->d/8, this->d,
             this->metric_type);
                 // TODO make the code_size calculation better, including rounding up via (d + 7) / 8
             };

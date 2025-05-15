@@ -455,7 +455,7 @@ jlong knn_jni::faiss_wrapper::LoadIndexWithStream(faiss::IOReader* ioReader) {
         throw std::runtime_error("IOReader cannot be null");
     }
 
-    std::cout << "Load index with stream called!" << std::endl;
+    // std::cout << "Load index with stream called!" << std::endl;
 
     faiss::Index* indexReader =
       faiss::read_index(ioReader,
@@ -666,7 +666,11 @@ jlong knn_jni::faiss_wrapper::LoadIndexWithStreamADC(faiss::IOReader* ioReader, 
     faiss::IndexBinaryFlat * codesIndex = (faiss::IndexBinaryFlat *) hnswBinary->storage; // since binary storage is binary flat codes
     // faiss::HNSW hnsw = hnswBinary->hnsw;
     // if (!codesIndex->xb) throw std::runtime_error("codes are broken!!\n");
-    std::vector<uint8_t> codes = codesIndex->xb;
+    // std::vector<uint8_t> codes = codesIndex->xb;
+
+    std::vector<uint8_t> * codes_ptr = &(codesIndex->xb); // TODO is there a way to do this without a copy?
+
+
     // std::cout << "printing with metricType " << metricType << " \n";
     // if (hnswBinary->metric_type == nullptr) {
     //     // std::cout
@@ -680,8 +684,11 @@ jlong knn_jni::faiss_wrapper::LoadIndexWithStreamADC(faiss::IOReader* ioReader, 
 
     // for whatever reason, it doesn't pass in the innerproduct correctly, so we're also going to pass in params here.
 
-    knn_jni::faiss_wrapper::FaissIndexBQ * alteredStorage = new knn_jni::faiss_wrapper::FaissIndexBQ(
-        indexReader->d, codes, metricType);
+    // knn_jni::faiss_wrapper::FaissIndexBQ * alteredStorage = new knn_jni::faiss_wrapper::FaissIndexBQ(
+    //     indexReader->d, codes, metricType);
+
+        knn_jni::faiss_wrapper::FaissIndexBQ * alteredStorage = new knn_jni::faiss_wrapper::FaissIndexBQ(
+            indexReader->d, codes_ptr, metricType);
         // indexReader->metric_type);
     faiss::IndexHNSW * alteredIndexHNSW = new faiss::IndexHNSW(alteredStorage, 32);     //TODO fix M
     alteredIndexHNSW->hnsw = hnswBinary->hnsw;
