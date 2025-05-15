@@ -54,26 +54,31 @@ class QuantizerHelper {
 
         float[][] rotationMatrix = RandomGaussianRotation.generateRotationMatrix(dim);
         log.info("first calc quant state value of rot mat: {}", rotationMatrix[0][0]);
-        // equivalent to 
+        // equivalent to
         Pair<float[], Double> meanAndL2L1 = calculateMeanAndL2L1Ratio(trainingRequest, sampledIndices, rotationMatrix);
 
         float[] meanThresholds = meanAndL2L1.getA();
         double averageL2L1Ratio = meanAndL2L1.getB();
 
         // meanThresholds = RandomGaussianRotation.applyRotation(meanThresholds, rotationMatrix);
-        
+
         trainingRequest.resetVectorValues();
-        Pair<float[], float[]> belowAbove = calculateBelowAboveThresholdMeans(trainingRequest, meanThresholds, sampledIndices, rotationMatrix);
-        
+        Pair<float[], float[]> belowAbove = calculateBelowAboveThresholdMeans(
+            trainingRequest,
+            meanThresholds,
+            sampledIndices,
+            rotationMatrix
+        );
+
         // TODO this bit is wrong.
         // if (rotationMatrix != null) {
-        //     meanThresholds = RandomGaussianRotation.applyRotation(meanThresholds, rotationMatrix);
-        //     trainingRequest.resetVectorValues();
-        //     belowAbove = calculateBelowAboveThresholdMeans(trainingRequest, meanThresholds, sampledIndices, rotationMatrix);
-            // belowAbove = new Pair<>(
-            //     RandomGaussianRotation.applyRotation(belowAbove.getA(), rotationMatrix),
-            //     RandomGaussianRotation.applyRotation(belowAbove.getB(), rotationMatrix)
-            // );
+        // meanThresholds = RandomGaussianRotation.applyRotation(meanThresholds, rotationMatrix);
+        // trainingRequest.resetVectorValues();
+        // belowAbove = calculateBelowAboveThresholdMeans(trainingRequest, meanThresholds, sampledIndices, rotationMatrix);
+        // belowAbove = new Pair<>(
+        // RandomGaussianRotation.applyRotation(belowAbove.getA(), rotationMatrix),
+        // RandomGaussianRotation.applyRotation(belowAbove.getB(), rotationMatrix)
+        // );
         // }
 
         return OneBitScalarQuantizationState.builder()
@@ -114,10 +119,10 @@ class QuantizerHelper {
         float[][] rotationMatrix = null;
 
         // if (meanL2L1.getB() > ROTATION_MATRIX_THRESHOLD) {
-            // rotationMatrix = RandomGaussianRotation.generateRotationMatrix(meanStd.getA().length);
-            // for (int i = 0; i < thresholds.length; i++) {
-            //     thresholds[i] = RandomGaussianRotation.applyRotation(thresholds[i], rotationMatrix);
-            // }
+        // rotationMatrix = RandomGaussianRotation.generateRotationMatrix(meanStd.getA().length);
+        // for (int i = 0; i < thresholds.length; i++) {
+        // thresholds[i] = RandomGaussianRotation.applyRotation(thresholds[i], rotationMatrix);
+        // }
         // }
 
         // get above/below thresholds before rotation.
@@ -128,12 +133,11 @@ class QuantizerHelper {
             bitsPerCoordinate,
             sampledIndices
         );
-        
 
         if (meanL2L1.getB() > ROTATION_MATRIX_THRESHOLD) {
             rotationMatrix = RandomGaussianRotation.generateRotationMatrix(meanStd.getA().length);
         }
-        
+
         // apply rotation first to thresholds, then to above/below threshold means.
         if (rotationMatrix != null) {
             rotationMatrix = RandomGaussianRotation.generateRotationMatrix(meanStd.getA().length);
@@ -204,6 +208,7 @@ class QuantizerHelper {
         }
         return thresholds;
     }
+
     private static Pair<float[], float[]> calculateBelowAboveThresholdMeans(
         TrainingRequest<float[]> request,
         float[] thresholds,
@@ -211,6 +216,7 @@ class QuantizerHelper {
     ) throws IOException {
         return calculateBelowAboveThresholdMeans(request, thresholds, sampledIndices, null);
     }
+
     /**
      * Calculates the below and above threshold means for a one-bit quantizer.
      *
@@ -223,7 +229,8 @@ class QuantizerHelper {
     private static Pair<float[], float[]> calculateBelowAboveThresholdMeans(
         TrainingRequest<float[]> request,
         float[] thresholds,
-        int[] sampledIndices, float[][] rotationMatrix
+        int[] sampledIndices,
+        float[][] rotationMatrix
     ) throws IOException {
         int dim = thresholds.length;
         float[] below = new float[dim], above = new float[dim];
@@ -231,9 +238,7 @@ class QuantizerHelper {
 
         for (int docId : sampledIndices) {
             float[] vector = request.getVectorAtThePosition(docId).clone(); // vector is not rotated.
-            if (
-                rotationMatrix != null
-            )  {
+            if (rotationMatrix != null) {
                 // log.info("logging with rotation, before 0th {}", vector[0]);
                 vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
             }
@@ -246,7 +251,7 @@ class QuantizerHelper {
                 // vector has been rotated.
                 if (vector[d] <= thresholds[d]) { // thresholds have been rotated.
                     // threshold were generated from unrotated vectors and then rotated.
-                // if (vector[d] <= 0.0f) {
+                    // if (vector[d] <= 0.0f) {
                     below[d] += vector[d];
                     belowCount[d]++;
                 } else {
@@ -265,12 +270,12 @@ class QuantizerHelper {
     }
 
     // private static Pair<float[], float[]> calculateBelowAboveThresholdMeans(
-    //     TrainingRequest<float[]> request,
-    //     float[][] thresholds,
-    //     int bitsPerCoordinate,
-    //     int[] sampledIndices
+    // TrainingRequest<float[]> request,
+    // float[][] thresholds,
+    // int bitsPerCoordinate,
+    // int[] sampledIndices
     // ) {
-    //     return calculateBelowAboveThresholdMeans(request, thresholds, bitsPerCoordinate, sampledIndices, false);
+    // return calculateBelowAboveThresholdMeans(request, thresholds, bitsPerCoordinate, sampledIndices, false);
     // }
     /**
      * Calculates below/above means for a multi-bit quantizer.
@@ -364,10 +369,9 @@ class QuantizerHelper {
         return new Pair<>(mean, sumSq);
     }
 
-    public static Pair<float[], Double> calculateMeanAndL2L1Ratio(TrainingRequest<float[]> request, int[] sampledIndices)throws IOException {
-        return calculateMeanAndL2L1Ratio(
-            request, sampledIndices, null
-        );
+    public static Pair<float[], Double> calculateMeanAndL2L1Ratio(TrainingRequest<float[]> request, int[] sampledIndices)
+        throws IOException {
+        return calculateMeanAndL2L1Ratio(request, sampledIndices, null);
     }
 
     /**
@@ -378,20 +382,23 @@ class QuantizerHelper {
      * @return Pair of (means[], average L2/L1 ratio).
      * @throws IOException if vector access fails.
      */
-    public static Pair<float[], Double> calculateMeanAndL2L1Ratio(TrainingRequest<float[]> request, int[] sampledIndices, float[][] rotationMatrix)
-        throws IOException {
+    public static Pair<float[], Double> calculateMeanAndL2L1Ratio(
+        TrainingRequest<float[]> request,
+        int[] sampledIndices,
+        float[][] rotationMatrix
+    ) throws IOException {
         float[] mean = null;
         double totalL2L1 = 0.0;
         int n = sampledIndices.length;
 
         for (int docId : sampledIndices) {
             float[] vector = request.getVectorAtThePosition(docId).clone();
-            
+
             if (vector == null) {
                 throw new IllegalArgumentException("Vector at sampled index " + docId + " is null.");
             }
 
-            if (rotationMatrix != null ) {
+            if (rotationMatrix != null) {
                 // log.info("rotating vector in calc mean and l2 ratio");
                 vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
             }

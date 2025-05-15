@@ -126,21 +126,29 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
         OneBitScalarQuantizationState binaryState = (OneBitScalarQuantizationState) state;
         float[][] rotationMatrix = binaryState.getRotationMatrix();
         log.info("vec value before rot {}", vector[0]);
+        float[] rotatedVector = vector.clone();
         if (rotationMatrix != null) {
             log.info("Rotation matrix called");
             log.info("first transfomr w adc value of rot mat: {}", rotationMatrix[0][0]);
-            vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
+
+            rotatedVector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
         }
         log.info("vec value after rot {}", vector[0]);
         // transformVectorWithADCNoCorrection(vector, binaryState);
 
         if (shouldDoADCCorrection(spaceType)) {
             // log.info("transform with correction called");
-            transformVectorWithADCCorrection(vector, binaryState);
+            // transformVectorWithADCCorrection(vector, binaryState);
+            transformVectorWithADCCorrection(rotatedVector, binaryState);
         } else {
             // log.info("transform with no correction called");
-            transformVectorWithADCNoCorrection(vector, binaryState);
+            // transformVectorWithADCNoCorrection(vector, binaryState);
+            transformVectorWithADCCorrection(rotatedVector, binaryState);
         }
+        // vector = rotatedVector;
+        log.info("vector now is: {}", vector);
+        System.arraycopy(rotatedVector, 0, vector, 0, vector.length);
+        log.info("vector now is: {}", vector);
     }
 
     private boolean shouldDoADCCorrection(SpaceType spaceType) {
@@ -163,7 +171,7 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
             float belowThreshold = binaryState.getBelowThresholdMeans()[i];
             float correction = (aboveThreshold - belowThreshold) * (aboveThreshold - belowThreshold);
             vector[i] = (vector[i] - belowThreshold) / (aboveThreshold - belowThreshold);
-            // vector[i] = correction * (vector[i] - 0.5f) + 0.5f;
+            vector[i] = correction * (vector[i] - 0.5f) + 0.5f;
         }
         log.info("vec value in the actual adc func  after trans {}", vector[0]);
     }

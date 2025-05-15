@@ -111,7 +111,9 @@ public class KNNIndexShard {
                                 engineFileContext.getSpaceType(),
                                 KNNEngine.getEngineNameFromPath(engineFileContext.getVectorFileName()),
                                 getIndexName(),
-                                SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo) ? VectorDataType.FLOAT : engineFileContext.getVectorDataType(),
+                                SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)
+                                    ? VectorDataType.FLOAT
+                                    : engineFileContext.getVectorDataType(),
                                 segmentLevelQuantizationInfo
                             ),
                             getIndexName(),
@@ -205,17 +207,17 @@ public class KNNIndexShard {
                             spaceType,
                             modelId,
                             // FieldInfoExtractor.extractQuantizationConfig(fieldInfo) == QuantizationConfig.EMPTY
-                            //     ? VectorDataType.get(
-                            //         fieldInfo.attributes().getOrDefault(VECTOR_DATA_TYPE_FIELD, VectorDataType.FLOAT.getValue())
-                            //     )
-                            //     : VectorDataType.BINARY
+                            // ? VectorDataType.get(
+                            // fieldInfo.attributes().getOrDefault(VECTOR_DATA_TYPE_FIELD, VectorDataType.FLOAT.getValue())
+                            // )
+                            // : VectorDataType.BINARY
                             FieldInfoExtractor.extractQuantizationConfig(fieldInfo) == QuantizationConfig.EMPTY
-                            ? VectorDataType.get(
-                            fieldInfo.attributes().getOrDefault(VECTOR_DATA_TYPE_FIELD, VectorDataType.FLOAT.getValue())
-                            )
-                            : (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)
-                            ? VectorDataType.FLOAT
-                            : VectorDataType.BINARY) // TODO fix ugly nested ternary
+                                ? VectorDataType.get(
+                                    fieldInfo.attributes().getOrDefault(VECTOR_DATA_TYPE_FIELD, VectorDataType.FLOAT.getValue())
+                                )
+                                : (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)
+                                    ? VectorDataType.FLOAT
+                                    : VectorDataType.BINARY) // TODO fix ugly nested ternary
                         )
                     );
                 }

@@ -110,7 +110,7 @@ public final class QuantizationService<T, R> {
         quantizer.transform(vector, quantizationState);
     }
 
-    public void transformWithADC(final QuantizationState quantizationState, final T vector, final SpaceType spaceType) {
+    public void transformWithADC(final QuantizationState quantizationState, T vector, final SpaceType spaceType) {
         Quantizer<T, R> quantizer = QuantizerFactory.getQuantizer(quantizationState.getQuantizationParams());
         // TODO here we need to call an ADC method based on state.
         // if (quantizer instanceof OneBitScalarQuantizer oneBitScalarQuantizer) {
@@ -120,7 +120,9 @@ public final class QuantizationService<T, R> {
         // else {
         // quantizer.transform(vector, quantizationState);
         // }
+        log.info("vector before : {}", vector);
         quantizer.transformWithADC(vector, quantizationState, spaceType);
+        log.info("vector after : {}", vector);
     }
 
     /**
