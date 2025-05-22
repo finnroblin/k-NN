@@ -86,6 +86,13 @@ public final class OneBitScalarQuantizationState implements QuantizationState {
         this.quantizationParams = new ScalarQuantizationParams(in, version);
         this.meanThresholds = in.readFloatArray();
         if (Version.fromId(version).onOrAfter(Version.V_3_1_0)) {
+            // Deserialize belowThresholdMeans using readOptionalArray
+            FloatArrayWrapper[] wrappedBelowThresholdMeans = in.readOptionalArray(FloatArrayWrapper::new, FloatArrayWrapper[]::new);
+            this.belowThresholdMeans = wrappedBelowThresholdMeans != null ? wrappedBelowThresholdMeans[0].getArray() : null;
+            // Deserialize aboveThresholdMeans using readOptionalArray
+            FloatArrayWrapper[] wrappedAboveThresholdMeans = in.readOptionalArray(FloatArrayWrapper::new, FloatArrayWrapper[]::new);
+            this.aboveThresholdMeans = wrappedAboveThresholdMeans != null ? wrappedAboveThresholdMeans[0].getArray() : null;
+            this.averageL2L1Ratio = in.readOptionalDouble();
             // Read rotation matrix
             if (in.readBoolean()) {
                 int dimensions = in.readVInt();
@@ -107,6 +114,9 @@ public final class OneBitScalarQuantizationState implements QuantizationState {
     public OneBitScalarQuantizationState(@NonNull ScalarQuantizationParams quantizationParams, @NonNull float[] meanThresholds) {
         this.quantizationParams = quantizationParams;
         this.meanThresholds = meanThresholds;
+        this.belowThresholdMeans = null;
+        this.aboveThresholdMeans = null;
+        this.averageL2L1Ratio = 0.0;
         this.rotationMatrix = null;
     }
 

@@ -16,6 +16,8 @@ import org.opensearch.knn.quantization.sampler.Sampler;
 import org.opensearch.knn.quantization.sampler.SamplerType;
 import org.opensearch.knn.quantization.sampler.SamplingFactory;
 
+import lombok.extern.log4j.Log4j2;
+
 import java.io.IOException;
 
 /**
@@ -23,6 +25,7 @@ import java.io.IOException;
  * It computes the mean of each dimension during training and then uses these means as thresholds
  * for quantizing the vectors.
  */
+@Log4j2
 public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
     private final int samplingSize; // Sampling size for training
     private final boolean shouldUseRandomRotation;
@@ -75,7 +78,7 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
         return QuantizerHelper.calculateQuantizationState(
             trainingRequest,
             sampledDocIds,
-            new ScalarQuantizationParams(ScalarQuantizationType.ONE_BIT)
+            new ScalarQuantizationParams(ScalarQuantizationType.ONE_BIT, trainingRequest.isEnableRandomRotation())
         );
     }
 
@@ -99,21 +102,6 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
         if (thresholds == null || thresholds.length != vectorLength) {
             throw new IllegalArgumentException("Thresholds must not be null and must match the dimension of the vector.");
         }
-        float[][] rotationMatrix = binaryState.getRotationMatrix();
-        if (rotationMatrix != null) {
-            vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
-        }
-        output.prepareQuantizedVector(vectorLength);
-        BitPacker.quantizeAndPackBits(vector, thresholds, output.getQuantizedVector());
-    }
-
-    @Override
-    public void transform(float[] vector, final QuantizationState state) {
-        if (vector == null) {
-            return;
-        }
-        validateState(state);
-        OneBitScalarQuantizationState binaryState = (OneBitScalarQuantizationState) state;
         float[][] rotationMatrix = binaryState.getRotationMatrix();
         if (rotationMatrix != null) {
             vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);

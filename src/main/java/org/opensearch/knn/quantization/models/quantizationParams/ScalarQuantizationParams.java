@@ -24,7 +24,11 @@ import java.io.IOException;
 @EqualsAndHashCode
 public class ScalarQuantizationParams implements QuantizationParams {
     private ScalarQuantizationType sqType;
-    private final boolean enableRandomRotation;
+    private boolean isEnableRandomRotation = QFrameBitEncoder.DEFAULT_ENABLE_RANDOM_ROTATION;
+
+    public ScalarQuantizationParams(ScalarQuantizationType quantizationType) {
+        sqType = quantizationType;
+    }
 
     /**
      * Static method to generate type identifier based on ScalarQuantizationType.
