@@ -7,7 +7,10 @@ package org.opensearch.knn.index.quantizationservice;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
+import lombok.extern.log4j.Log4j2;
+
 import org.apache.lucene.index.FieldInfo;
+import org.opensearch.knn.index.SpaceType;
 import org.opensearch.knn.index.VectorDataType;
 import org.opensearch.knn.index.engine.qframe.QuantizationConfig;
 import org.opensearch.knn.index.vectorvalues.KNNVectorValues;
@@ -18,7 +21,9 @@ import org.opensearch.knn.quantization.models.quantizationParams.QuantizationPar
 import org.opensearch.knn.quantization.models.quantizationParams.ScalarQuantizationParams;
 import org.opensearch.knn.quantization.models.quantizationState.QuantizationState;
 import org.opensearch.knn.quantization.quantizer.Quantizer;
+
 import java.io.IOException;
+import java.util.function.Supplier;
 
 import static org.opensearch.knn.common.FieldInfoExtractor.extractQuantizationConfig;
 
@@ -29,6 +34,7 @@ import static org.opensearch.knn.common.FieldInfoExtractor.extractQuantizationCo
  * @param <T> The type of the input vectors to be quantized.
  * @param <R> The type of the quantized output vectors.
  */
+@Log4j2
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class QuantizationService<T, R> {
 
@@ -53,19 +59,22 @@ public final class QuantizationService<T, R> {
      * {@link QuantizationState}. The quantizer is determined based on the given {@link QuantizationParams}.
      *
      * @param quantizationParams The {@link QuantizationParams} containing the parameters for quantization.
-     * @param knnVectorValues The {@link KNNVectorValues} representing the vector data to be used for training.
+     * @param knnVectorValuesSupplier The {@link KNNVectorValues} representing the vector data to be used for training.
      * @return The {@link QuantizationState} containing the state of the trained quantizer.
      * @throws IOException If an I/O error occurs during the training process.
      */
     public QuantizationState train(
         final QuantizationParams quantizationParams,
-        final KNNVectorValues<T> knnVectorValues,
+        final Supplier<KNNVectorValues<T>> knnVectorValuesSupplier,
         final long liveDocs
     ) throws IOException {
         Quantizer<T, R> quantizer = QuantizerFactory.getQuantizer(quantizationParams);
 
-        // Create the training request from the vector values
-        KNNVectorQuantizationTrainingRequest<T> trainingRequest = new KNNVectorQuantizationTrainingRequest<>(knnVectorValues, liveDocs);
+        // Create the training request using the supplier
+        KNNVectorQuantizationTrainingRequest<T> trainingRequest = new KNNVectorQuantizationTrainingRequest<>(
+            knnVectorValuesSupplier,
+            liveDocs
+        );
 
         // Train the quantizer and return the quantization state
         return quantizer.train(trainingRequest);
@@ -93,8 +102,27 @@ public final class QuantizationService<T, R> {
      * @param vector The vector to be transformed.
      */
     public void transform(final QuantizationState quantizationState, final T vector) {
+        // final String spaceType
+        // )
+        // {
         Quantizer<T, R> quantizer = QuantizerFactory.getQuantizer(quantizationState.getQuantizationParams());
+        // TODO here we need to call an ADC method based on state.
         quantizer.transform(vector, quantizationState);
+    }
+
+    public void transformWithADC(final QuantizationState quantizationState, T vector, final SpaceType spaceType) {
+        Quantizer<T, R> quantizer = QuantizerFactory.getQuantizer(quantizationState.getQuantizationParams());
+        // TODO here we need to call an ADC method based on state.
+        // if (quantizer instanceof OneBitScalarQuantizer oneBitScalarQuantizer) {
+        // log.info("quantizationService quantizer called");
+        // oneBitScalarQuantizer.transformWithADC(vector, quantizationState, spaceType);
+        // }
+        // else {
+        // quantizer.transform(vector, quantizationState);
+        // }
+        // log.info("vector before : {}", vector);
+        quantizer.transformWithADC(vector, quantizationState, spaceType);
+        // log.info("vector after : {}", vector);
     }
 
     /**

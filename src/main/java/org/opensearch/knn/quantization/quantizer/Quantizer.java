@@ -11,6 +11,8 @@ import org.opensearch.knn.quantization.models.requests.TrainingRequest;
 
 import java.io.IOException;
 
+import org.opensearch.knn.index.SpaceType;
+
 /**
  * The Quantizer interface defines the methods required for training and quantizing vectors
  * in the context of K-Nearest Neighbors (KNN) and similar machine learning tasks.
@@ -47,4 +49,6 @@ public interface Quantizer<T, R> {
      * @param state  the quantization state containing parameters for quantization.
      */
     default void transform(T vector, QuantizationState state) {}
+
+    default void transformWithADC(T vector, QuantizationState state, SpaceType spaceType) {}
 }
