@@ -457,7 +457,7 @@ public class IndexingIT extends AbstractRestartUpgradeTestCase {
         int dimension = 8;
 
         if (isRunningAgainstOldCluster()) {
-            // In old cluster (3.0), create index with binary quantization but without random rotation
+            // In old cluster (2.20), create index with binary quantization but without random rotation
             String mapping = XContentFactory.jsonBuilder()
                 .startObject()
                 .startObject("properties")
@@ -465,10 +465,12 @@ public class IndexingIT extends AbstractRestartUpgradeTestCase {
                 .field(VECTOR_TYPE, KNN_VECTOR)
                 .field(DIMENSION, dimension)
                 .startObject(KNN_METHOD)
-                .field(NAME, METHOD_HNSW)
                 .field(METHOD_PARAMETER_SPACE_TYPE, SpaceType.L2.getValue())
                 .field(KNN_ENGINE, FAISS_NAME)
+                .field(NAME, METHOD_HNSW)
                 .startObject(PARAMETERS)
+                .field(METHOD_PARAMETER_EF_CONSTRUCTION, 256)
+                .field(METHOD_PARAMETER_M, 16)
                 .startObject(METHOD_ENCODER_PARAMETER)
                 .field(NAME, "binary")
                 .startObject(PARAMETERS)
@@ -476,8 +478,6 @@ public class IndexingIT extends AbstractRestartUpgradeTestCase {
                 // No random rotation parameter in old version
                 .endObject()
                 .endObject()
-                .field(METHOD_PARAMETER_EF_CONSTRUCTION, 256)
-                .field(METHOD_PARAMETER_M, 16)
                 .endObject()
                 .endObject()
                 .endObject()
@@ -517,7 +517,7 @@ public class IndexingIT extends AbstractRestartUpgradeTestCase {
                 .field(NAME, "binary")
                 .startObject(PARAMETERS)
                 .field("bits", 1)
-                .field("enable_random_rotation", true)
+                .field("random_rotation", true)
                 .endObject()
                 .endObject()
                 .field(METHOD_PARAMETER_EF_CONSTRUCTION, 256)
