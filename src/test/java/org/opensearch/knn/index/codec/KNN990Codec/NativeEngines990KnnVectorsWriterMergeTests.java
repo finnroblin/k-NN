@@ -17,6 +17,7 @@ import org.apache.lucene.index.FloatVectorValues;
 import org.apache.lucene.index.MergeState;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.VectorEncoding;
+import org.apache.lucene.util.Version;
 import org.mockito.Mock;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
@@ -150,7 +151,7 @@ public class NativeEngines990KnnVectorsWriterMergeTests extends OpenSearchTestCa
                 () -> KNNVectorValuesFactory.getKNNVectorValuesSupplierForMerge(VectorDataType.FLOAT, fieldInfo, mergeState)
             ).thenReturn(knnVectorValuesSupplier);
 
-            when(quantizationService.getQuantizationParams(fieldInfo)).thenReturn(null);
+            when(quantizationService.getQuantizationParams(fieldInfo, Version.LATEST)).thenReturn(null);
             nativeIndexWriterMockedStatic.when(
                 () -> NativeIndexWriter.getWriter(fieldInfo, segmentWriteState, null, nativeIndexBuildStrategyFactory)
             ).thenReturn(nativeIndexWriter);
@@ -221,7 +222,7 @@ public class NativeEngines990KnnVectorsWriterMergeTests extends OpenSearchTestCa
                 () -> KNNVectorValuesFactory.getKNNVectorValuesSupplierForMerge(VectorDataType.FLOAT, fieldInfo, mergeState)
             ).thenReturn(knnVectorValuesSupplier);
 
-            when(quantizationService.getQuantizationParams(fieldInfo)).thenReturn(null);
+            when(quantizationService.getQuantizationParams(fieldInfo, Version.LATEST)).thenReturn(null);
             nativeIndexWriterMockedStatic.when(
                 () -> NativeIndexWriter.getWriter(fieldInfo, segmentWriteState, null, nativeIndexBuildStrategyFactory)
             ).thenReturn(nativeIndexWriter);
@@ -283,7 +284,7 @@ public class NativeEngines990KnnVectorsWriterMergeTests extends OpenSearchTestCa
                 () -> KNNVectorValuesFactory.getKNNVectorValuesSupplierForMerge(VectorDataType.FLOAT, fieldInfo, mergeState)
             ).thenReturn(knnVectorValuesSupplier);
 
-            when(quantizationService.getQuantizationParams(fieldInfo)).thenReturn(null);
+            when(quantizationService.getQuantizationParams(fieldInfo, Version.LATEST)).thenReturn(null);
             nativeIndexWriterMockedStatic.when(
                 () -> NativeIndexWriter.getWriter(fieldInfo, segmentWriteState, null, nativeIndexBuildStrategyFactory)
             ).thenReturn(nativeIndexWriter);
@@ -346,7 +347,7 @@ public class NativeEngines990KnnVectorsWriterMergeTests extends OpenSearchTestCa
                 () -> KNNVectorValuesFactory.getKNNVectorValuesSupplierForMerge(VectorDataType.FLOAT, fieldInfo, mergeState)
             ).thenReturn(knnVectorValuesSupplier);
 
-            when(quantizationService.getQuantizationParams(fieldInfo)).thenReturn(quantizationParams);
+            when(quantizationService.getQuantizationParams(fieldInfo, Version.LATEST)).thenReturn(quantizationParams);
             try {
                 // Fix mock to use the supplier
                 when(quantizationService.train(eq(quantizationParams), any(Supplier.class), eq((long) mergedVectors.size()))).thenReturn(
