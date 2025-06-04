@@ -7,6 +7,7 @@ package org.opensearch.knn.index.util;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
+
 import org.apache.commons.lang.StringUtils;
 import org.opensearch.Version;
 import org.opensearch.cluster.metadata.IndexMetadata;
@@ -21,6 +22,8 @@ import org.opensearch.knn.index.engine.MethodComponentContext;
 import org.opensearch.knn.index.SpaceType;
 import org.opensearch.knn.index.VectorDataType;
 import org.opensearch.knn.index.mapper.KNNVectorFieldMapper;
+import org.opensearch.knn.index.query.SegmentLevelQuantizationInfo;
+import org.opensearch.knn.index.query.SegmentLevelQuantizationUtil;
 import org.opensearch.knn.index.mapper.KNNVectorFieldType;
 import org.opensearch.knn.index.query.request.MethodParameter;
 import org.opensearch.knn.index.engine.KNNEngine;
@@ -43,6 +46,10 @@ import static org.opensearch.knn.common.KNNConstants.HNSW_ALGO_EF_SEARCH;
 import static org.opensearch.knn.common.KNNConstants.SPACE_TYPE;
 import static org.opensearch.knn.common.KNNConstants.VECTOR_DATA_TYPE_FIELD;
 import static org.opensearch.knn.index.query.parser.RescoreParser.RESCORE_PARAMETER;
+
+import org.opensearch.knn.quantization.enums.ScalarQuantizationType;
+import org.opensearch.knn.quantization.models.quantizationParams.ScalarQuantizationParams;
+import org.opensearch.knn.quantization.models.quantizationState.MultiBitScalarQuantizationState;
 
 public class IndexUtil {
 
@@ -268,7 +275,8 @@ public class IndexUtil {
         SpaceType spaceType,
         KNNEngine knnEngine,
         String indexName,
-        VectorDataType vectorDataType
+        VectorDataType vectorDataType,
+        SegmentLevelQuantizationInfo segmentLevelQuantizationInfo
     ) {
         Map<String, Object> loadParameters = Maps.newHashMap(ImmutableMap.of(SPACE_TYPE, spaceType.getValue()));
 
@@ -279,7 +287,31 @@ public class IndexUtil {
         }
         loadParameters.put(VECTOR_DATA_TYPE_FIELD, vectorDataType.getValue());
 
+        if (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)) {
+            loadParameters.put("adc_enabled", true);
+            String quantization_level = segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier();
+
+            loadParameters.put("quantization_level", quantization_level);
+            loadParameters.put("space_type", spaceType.getValue());
+
+            if (isMultiBit(quantization_level)) {
+                loadParameters.put(
+                    "above_threshold_means",
+                    ((MultiBitScalarQuantizationState) (segmentLevelQuantizationInfo.getQuantizationState())).getAboveThresholdMeans()
+                ); // TODO: refactor this so no dynamic cast...
+                loadParameters.put(
+                    "below_threshold_means",
+                    ((MultiBitScalarQuantizationState) segmentLevelQuantizationInfo.getQuantizationState()).getBelowThresholdMeans()
+                );
+            }
+        }
+
         return Collections.unmodifiableMap(loadParameters);
+    }
+
+    private static boolean isMultiBit(String quantization_level) {
+        return (quantization_level.equals(ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.TWO_BIT))
+            || quantization_level.equals(ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.FOUR_BIT)));
     }
 
     public static boolean isClusterOnOrAfterMinRequiredVersion(String key) {
@@ -324,6 +356,12 @@ public class IndexUtil {
         return KNNEngine.FAISS == knnEngine
             && parameters.get(VECTOR_DATA_TYPE_FIELD) != null
             && parameters.get(VECTOR_DATA_TYPE_FIELD).toString().equals(VectorDataType.BINARY.getValue());
+    }
+
+    public static boolean isADCEnabled(KNNEngine knnEngine, Map<String, Object> parameters) {
+        // return true;
+        // return false;
+        return KNNEngine.FAISS == knnEngine && parameters.get("adc_enabled") != null && (boolean) parameters.get("adc_enabled");
     }
 
     /**

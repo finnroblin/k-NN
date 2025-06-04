@@ -5,15 +5,16 @@
 
 package org.opensearch.knn.quantization.models.quantizationState;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.NonNull;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
 import org.apache.lucene.util.RamUsageEstimator;
 import org.opensearch.Version;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
+import org.opensearch.core.common.io.stream.Writeable;
 import org.opensearch.knn.quantization.models.quantizationParams.ScalarQuantizationParams;
 
 import java.io.IOException;
@@ -24,8 +25,8 @@ import java.io.IOException;
  */
 @Getter
 @Builder
-@AllArgsConstructor
 @NoArgsConstructor(force = true)
+@AllArgsConstructor
 public final class OneBitScalarQuantizationState implements QuantizationState {
     @NonNull
     private final ScalarQuantizationParams quantizationParams;
@@ -39,6 +40,18 @@ public final class OneBitScalarQuantizationState implements QuantizationState {
      */
     @NonNull
     private final float[] meanThresholds;
+
+    /**
+     * Represents the mean of all values below the threshold for each dimension.
+     */
+    @Builder.Default
+    private float[] belowThresholdMeans = null;
+
+    /**
+     * Represents the mean of all values above the threshold for each dimension.
+     */
+    @Builder.Default
+    private float[] aboveThresholdMeans = null;
 
     /**
      * Rotation matrix used if random rotation is enabled.
@@ -62,7 +75,9 @@ public final class OneBitScalarQuantizationState implements QuantizationState {
         out.writeVInt(Version.CURRENT.id); // Write the version
         quantizationParams.writeTo(out);
         out.writeFloatArray(meanThresholds);
-
+        out.writeOptionalArray(belowThresholdMeans != null ? new FloatArrayWrapper[] { new FloatArrayWrapper(belowThresholdMeans) } : null);
+        // Serialize aboveThresholdMeans using writeOptionalArray
+        out.writeOptionalArray(aboveThresholdMeans != null ? new FloatArrayWrapper[] { new FloatArrayWrapper(aboveThresholdMeans) } : null);
         // Write rotation matrix
         if (rotationMatrix != null) {
             out.writeBoolean(true);
@@ -86,6 +101,12 @@ public final class OneBitScalarQuantizationState implements QuantizationState {
         this.quantizationParams = new ScalarQuantizationParams(in, version);
         this.meanThresholds = in.readFloatArray();
         if (Version.fromId(version).onOrAfter(Version.V_3_1_0)) {
+            // Deserialize belowThresholdMeans using readOptionalArray
+            FloatArrayWrapper[] wrappedBelowThresholdMeans = in.readOptionalArray(FloatArrayWrapper::new, FloatArrayWrapper[]::new);
+            this.belowThresholdMeans = wrappedBelowThresholdMeans != null ? wrappedBelowThresholdMeans[0].getArray() : null;
+            // Deserialize aboveThresholdMeans using readOptionalArray
+            FloatArrayWrapper[] wrappedAboveThresholdMeans = in.readOptionalArray(FloatArrayWrapper::new, FloatArrayWrapper[]::new);
+            this.aboveThresholdMeans = wrappedAboveThresholdMeans != null ? wrappedAboveThresholdMeans[0].getArray() : null;
             // Read rotation matrix
             if (in.readBoolean()) {
                 int dimensions = in.readVInt();
@@ -184,6 +205,12 @@ public final class OneBitScalarQuantizationState implements QuantizationState {
         long size = RamUsageEstimator.shallowSizeOfInstance(OneBitScalarQuantizationState.class);
         size += RamUsageEstimator.shallowSizeOf(quantizationParams);
         size += RamUsageEstimator.sizeOf(meanThresholds);
+        if (belowThresholdMeans != null) {
+            size += RamUsageEstimator.sizeOf(belowThresholdMeans);
+        }
+        if (aboveThresholdMeans != null) {
+            size += RamUsageEstimator.sizeOf(aboveThresholdMeans);
+        }
         if (rotationMatrix != null) {
             size += RamUsageEstimator.shallowSizeOf(rotationMatrix);
             // Add size of each row array
@@ -192,5 +219,27 @@ public final class OneBitScalarQuantizationState implements QuantizationState {
             }
         }
         return size;
+    }
+
+    private class FloatArrayWrapper implements Writeable {
+        private final float[] array;
+
+        public FloatArrayWrapper(float[] array) {
+            this.array = array;
+        }
+
+        // Constructor that matches Writeable.Reader<T>
+        public FloatArrayWrapper(StreamInput in) throws IOException {
+            this.array = in.readFloatArray();
+        }
+
+        public float[] getArray() {
+            return array;
+        }
+
+        @Override
+        public void writeTo(StreamOutput out) throws IOException {
+            out.writeFloatArray(array);
+        }
     }
 }

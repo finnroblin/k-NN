@@ -6,9 +6,13 @@
 package org.opensearch.knn.index.query;
 
 import lombok.experimental.UtilityClass;
+import lombok.extern.log4j.Log4j2;
 import org.apache.lucene.index.LeafReader;
+import org.opensearch.knn.index.SpaceType;
 import org.opensearch.knn.index.codec.KNN990Codec.QuantizationConfigKNNCollector;
 import org.opensearch.knn.index.quantizationservice.QuantizationService;
+import org.opensearch.knn.quantization.enums.ScalarQuantizationType;
+import org.opensearch.knn.quantization.models.quantizationParams.ScalarQuantizationParams;
 import org.opensearch.knn.quantization.models.quantizationState.QuantizationState;
 
 import java.io.IOException;
@@ -19,9 +23,34 @@ import java.util.Locale;
  * but I am keeping it thinking that {@link SegmentLevelQuantizationInfo} free from these utility functions to reduce
  * the responsibilities of {@link SegmentLevelQuantizationInfo} class.
  */
+@Log4j2
 @UtilityClass
 public class SegmentLevelQuantizationUtil {
 
+    public static boolean isAdcEnabled(SegmentLevelQuantizationInfo segmentLevelQuantizationInfo) {
+        // return true;
+        // return false;
+        // here we have to change the triggering based on whether we're in one bit, two bit, 4 bit, etc.
+        // return false;
+        return segmentLevelQuantizationInfo != null
+            && (ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.ONE_BIT)
+                .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
+                || ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.TWO_BIT)
+                    .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
+                || ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.FOUR_BIT)
+                    .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier()));
+    }
+
+    // public static float[] getAboveThresholdMeans(SegmentLevelQuantizationInfo segmentLevelQuantizationInfo) {
+    // return segmentLevelQuantizationInfo.quantizationState.getAboveThresholdMeans();
+    // }
+
+    // public static float[] getAboveThresholdMeans(SegmentLevelQuantizationInfo segmentLevelQuantizationInfo) {
+
+    // }
+    // public static String getQuantizationLevel(SegmentLevelQuantizationInfo segmentLevelQuantizationInfo) {
+    // return segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier();
+    // }
     /**
      * A simple function to convert a vector to a quantized vector for a segment.
      * @param vector array of float
@@ -40,6 +69,29 @@ public class SegmentLevelQuantizationUtil {
             vector,
             quantizationService.createQuantizationOutput(segmentLevelQuantizationInfo.getQuantizationParams())
         );
+    }
+
+    public static void transformVector(final float[] vector, final SegmentLevelQuantizationInfo segmentLevelQuantizationInfo) {
+        if (segmentLevelQuantizationInfo == null) {
+            return;
+        }
+        final QuantizationService quantizationService = QuantizationService.getInstance();
+        quantizationService.transform(segmentLevelQuantizationInfo.getQuantizationState(), vector);
+    }
+
+    public static void transformVectorWithADC(
+        float[] vector,
+        final SegmentLevelQuantizationInfo segmentLevelQuantizationInfo,
+        SpaceType spaceType
+    ) {
+        if (segmentLevelQuantizationInfo == null) {
+            return;
+        }
+        final QuantizationService quantizationService = QuantizationService.getInstance();
+        // quantizationService.transform(segmentLevelQuantizationInfo.getQuantizationState(), vector);
+        // log.info("vector before: {}", vector);
+        quantizationService.transformWithADC(segmentLevelQuantizationInfo.getQuantizationState(), vector, spaceType);
+        // log.info("vector after: {}", vector);
     }
 
     /**

@@ -5,6 +5,10 @@
 
 package org.opensearch.knn.quantization.quantizer;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.NonNull;
+import lombok.Value;
 import org.opensearch.knn.quantization.models.quantizationParams.ScalarQuantizationParams;
 import org.opensearch.knn.quantization.models.quantizationState.MultiBitScalarQuantizationState;
 import org.opensearch.knn.quantization.models.quantizationState.OneBitScalarQuantizationState;
@@ -42,11 +46,15 @@ class QuantizerHelper {
             sampledIndices,
             ONE_BIT_BITS_PER_COORDINATE
         );
+        // TODO: need to refactor below/above into the QuanizationHelper.
+        trainingRequest.resetVectorValues();
 
         return OneBitScalarQuantizationState.builder()
             .quantizationParams(quantizationParams)
-            .meanThresholds(quantizerHelperResult.thresholds()[0])
-            .rotationMatrix(quantizerHelperResult.rotationMatrix())
+            .meanThresholds(quantizerHelperResult.getThresholds()[0])
+            .belowThresholdMeans(quantizerHelperResult.getBelow())
+            .aboveThresholdMeans(quantizerHelperResult.getAbove())
+            .rotationMatrix(quantizerHelperResult.getRotationMatrix())
             .build();
     }
 
@@ -70,8 +78,8 @@ class QuantizerHelper {
 
         return MultiBitScalarQuantizationState.builder()
             .quantizationParams(quantizationParams)
-            .thresholds(quantizerHelperResult.thresholds())
-            .rotationMatrix(quantizerHelperResult.rotationMatrix())
+            .thresholds(quantizerHelperResult.getThresholds())
+            .rotationMatrix(quantizerHelperResult.getRotationMatrix())
             .build();
     }
 
@@ -108,7 +116,20 @@ class QuantizerHelper {
         return thresholds;
     }
 
-    private record QuantizerHelperResult(float[][] rotationMatrix, float[][] thresholds) {
+    @Value
+    @AllArgsConstructor
+    @Builder
+    public class QuantizerHelperResult {
+        @NonNull
+        float[][] rotationMatrix;
+        @NonNull
+        float[][] thresholds;
+        float[] below;
+        float[] above;
+
+        public QuantizerHelperResult(float[][] rotationMatrix, float[][] thresholds) {
+            this(rotationMatrix, thresholds, null, null);
+        }
     }
 
     private static QuantizerHelperResult calculateQuantizationStateHelper(
@@ -129,9 +150,19 @@ class QuantizerHelper {
         Pair<float[], float[]> meanStd = calculateMeanAndStdDev(trainingRequest, sampledIndices, rotationMatrix);
         thresholds = calculateThresholds(meanStd.getA(), meanStd.getB(), bitsPerCoordinate);
         // if bitsPerCoordinate = 1, there should only be one threshold (used to mean center coordinates).
-        assert bitsPerCoordinate != 1 || thresholds.length == 1;
-
-        return new QuantizerHelperResult(rotationMatrix, thresholds);
+        if (bitsPerCoordinate == 1) {
+            assert thresholds.length == 1;
+            // grab above and below threshold means for ADC
+            Pair<float[], float[]> belowAbove = calculateBelowAboveThresholdMeans(
+                    trainingRequest,
+                    thresholds[0],
+                    sampledIndices,
+                    rotationMatrix
+            );
+            return new QuantizerHelperResult(rotationMatrix, thresholds, belowAbove.getA(), belowAbove.getB());
+        } else {
+            return new QuantizerHelperResult(rotationMatrix, thresholds);
+        }
     }
 
     public static Pair<float[], float[]> calculateMeanAndStdDev(TrainingRequest<float[]> request, int[] sampledIndices) throws IOException {
@@ -187,5 +218,47 @@ class QuantizerHelper {
         }
 
         return new Pair<>(mean, sumSq);
+    }
+    private static Pair<float[], float[]> calculateBelowAboveThresholdMeans(
+        TrainingRequest<float[]> request,
+        float[] thresholds,
+        int[] sampledIndices,
+        float[][] rotationMatrix
+    ) throws IOException {
+        int dim = thresholds.length;
+        float[] below = new float[dim], above = new float[dim];
+        int[] belowCount = new int[dim], aboveCount = new int[dim];
+
+        for (int docId : sampledIndices) {
+            float[] vector = request.getVectorAtThePosition(docId).clone(); // vector is not rotated.
+            if (rotationMatrix != null) {
+                // log.info("logging with rotation, before 0th {}", vector[0]);
+                vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
+            }
+            // log.info("vector 1st value is: {}", vector[0]);
+            if (vector == null) {
+                throw new IllegalArgumentException("Vector at sampled index " + docId + " is null.");
+            }
+
+            for (int d = 0; d < dim; d++) {
+                // vector has been rotated.
+                if (vector[d] <= thresholds[d]) { // thresholds have been rotated.
+                    // threshold were generated from unrotated vectors and then rotated.
+                    // if (vector[d] <= 0.0f) {
+                    below[d] += vector[d];
+                    belowCount[d]++;
+                } else {
+                    above[d] += vector[d];
+                    aboveCount[d]++;
+                }
+            }
+        }
+
+        for (int d = 0; d < dim; d++) {
+            if (belowCount[d] > 0) below[d] /= belowCount[d];
+            if (aboveCount[d] > 0) above[d] /= aboveCount[d];
+        }
+
+        return new Pair<>(below, above);
     }
 }

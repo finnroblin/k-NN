@@ -14,6 +14,7 @@
 #include "faiss_util.h"
 #include "faiss_index_service.h"
 #include "faiss_stream_support.h"
+#include "FaissIndexBQ.h"
 
 #include "faiss/impl/io.h"
 #include "faiss/index_factory.h"
@@ -26,6 +27,7 @@
 #include "commons.h"
 #include "faiss/IndexBinaryIVF.h"
 #include "faiss/IndexBinaryHNSW.h"
+
 
 #include <algorithm>
 #include <jni.h>
@@ -453,6 +455,8 @@ jlong knn_jni::faiss_wrapper::LoadIndexWithStream(faiss::IOReader* ioReader) {
         throw std::runtime_error("IOReader cannot be null");
     }
 
+    // std::cout << "Load index with stream called!" << std::endl;
+
     faiss::Index* indexReader =
       faiss::read_index(ioReader,
                         faiss::IO_FLAG_READ_ONLY
@@ -460,6 +464,238 @@ jlong knn_jni::faiss_wrapper::LoadIndexWithStream(faiss::IOReader* ioReader) {
                         | faiss::IO_FLAG_SKIP_PRECOMPUTE_TABLE);
 
     return (jlong) indexReader;
+}
+jlong knn_jni::faiss_wrapper::LoadIndexWithStreamADCAndParams(faiss::IOReader* ioReader, knn_jni::JNIUtilInterface * jniUtil, JNIEnv * env, jobject methodParamsJ) {
+    // if ()
+    // do we also need env passed in...
+    // std::cout << "Load LoadIndexWithStreamADCAndParams called!" << std::endl;
+    
+    auto methodParams = jniUtil->ConvertJavaMapToCppMap(env, methodParamsJ);
+
+    auto quantization_level_it = methodParams.find("quantization_level");
+    knn_jni::QuantizationLevel quantLevel = knn_jni::QuantizationLevel::NONE;
+    if (quantization_level_it != methodParams.end()) {
+        quantLevel = jniUtil->ConvertJavaStringToQuantizationLevel(env, quantization_level_it->second);
+    }    
+
+    // get metricType
+
+    auto space_type_it = methodParams.find("space_type");
+    faiss::MetricType metricType = faiss::MetricType::METRIC_L2;
+    if (space_type_it!= methodParams.end()) {
+        // std::space_type = jniUtil->ConvertJavaStringToQuantizationLevel(env, quantization_level_it->second);
+
+        std::string spaceTypeCpp(jniUtil->ConvertJavaObjectToCppString(env, space_type_it->second));
+        // std::cout << "spaceTypeCpp: " << spaceTypeCpp << std::endl;
+        metricType = knn_jni::faiss_wrapper::TranslateSpaceToMetric(spaceTypeCpp);
+
+    } else {
+        throw std::runtime_error("space type not specified in params");
+    }
+    
+    // std::cout << "after metric type, here's quant level " << static_cast<int>(quantLevel) << std::endl; 
+
+    if (quantLevel == knn_jni::QuantizationLevel::ONE_BIT) {
+    
+            return knn_jni::faiss_wrapper::LoadIndexWithStreamADC(ioReader, metricType);
+    } else if (
+        quantLevel == knn_jni::QuantizationLevel::TWO_BIT || quantLevel == knn_jni::QuantizationLevel::FOUR_BIT
+    )    {
+        // get below threshold means here
+        // TODO refactor into a cleaner function...
+        // TODO memory leaks? when to release float array?
+        auto above_threshold_means_it = methodParams.find("above_threshold_means");
+        float* above_threshold_mean_float_array = nullptr;
+        size_t thresholds_length = 0;
+        if (above_threshold_means_it != methodParams.end()) {
+            // std::cout << "before threshold length " << std::endl;
+            thresholds_length = jniUtil->GetJavaFloatArrayLength(env,(jfloatArray)  above_threshold_means_it->second);
+            // std::cout << "after threshold length, length: " << thresholds_length << std::endl;
+            above_threshold_mean_float_array = jniUtil->GetFloatArrayElements(
+                env, (jfloatArray) above_threshold_means_it->second, nullptr 
+            );
+            // std::cout << "after threshold array " << std::endl;
+            // std::cout << "first element of the array " << *above_threshold_mean_float_array << " " << std::endl; 
+        } 
+
+        auto below_threshold_means_it = methodParams.find("below_threshold_means");
+        float* below_threshold_mean_float_array = nullptr;
+        if (below_threshold_means_it != methodParams.end()) {
+            below_threshold_mean_float_array = jniUtil->GetFloatArrayElements(
+                env, (jfloatArray) below_threshold_means_it->second, nullptr 
+            );
+            // std::cout << "after below threshold array " << std::endl;
+
+        }
+        
+        
+        std::vector<float> above_threshold_mean_vector(above_threshold_mean_float_array, above_threshold_mean_float_array + thresholds_length);
+        
+        // std::cout << "after above threshold vector " << std::endl;
+
+        std::vector<float> below_threshold_mean_vector(below_threshold_mean_float_array, below_threshold_mean_float_array + thresholds_length);
+        
+        // std::cout << "after below threshold vector " << std::endl;
+        // TODO: storage duration of above and below threshold means
+        return LoadIndexWithStreamADCUnary(ioReader, metricType, quantLevel, above_threshold_mean_vector, below_threshold_mean_vector); // here also pass in the quantizationlevel 
+
+    }
+    // else if (quantLevel == knn_jni::QuantizationLevel::FOUR_BIT) {
+    //     auto above_threshold_means_it = methodParams.find("above_threshold_means");
+    //     float* above_threshold_mean_float_array = nullptr;
+    //     size_t thresholds_length = 0;
+    //     if (above_threshold_means_it != methodParams.end()) {
+    //         thresholds_length = jniUtil->GetJavaFloatArrayLength(env,(jfloatArray)  above_threshold_means_it->second);
+    //         above_threshold_mean_float_array = jniUtil->GetFloatArrayElements(
+    //             env, (jfloatArray) above_threshold_means_it->second, nullptr 
+    //         );
+    //     } 
+
+    //     auto below_threshold_means_it = methodParams.find("below_threshold_means");
+    //     float* below_threshold_mean_float_array = nullptr;
+    //     if (below_threshold_means_it != methodParams.end()) {
+    //         below_threshold_mean_float_array = jniUtil->GetFloatArrayElements(
+    //             env, (jfloatArray) below_threshold_means_it->second, nullptr 
+    //         );
+    //     }
+        
+    //     std::vector<float> above_threshold_mean_vector(above_threshold_mean_float_array, above_threshold_mean_float_array + thresholds_length);
+    //     std::vector<float> below_threshold_mean_vector(below_threshold_mean_float_array, below_threshold_mean_float_array + thresholds_length);
+
+    //     return LoadIndexWithStreamADCUnary(ioReader, metricType, quantLevel, above_threshold_mean_vector, below_threshold_mean_vector);
+    else {
+        jniUtil->HasExceptionInStack(env, "load adc stream called without a quantization level");
+        throw std::runtime_error("load adc stream called without a quantization level");
+    }
+
+}
+
+jlong knn_jni::faiss_wrapper::LoadIndexWithStreamADCUnary(faiss::IOReader* ioReader, faiss::MetricType metricType,
+    knn_jni::QuantizationLevel quantLevel, std::vector<float> above_threshold_mean_vector, std::vector<float> below_threshold_mean_vector
+) {
+    if (ioReader == nullptr)  {
+        throw std::runtime_error("IOReader cannot be null");
+    }
+
+    // Extract the relevant info from the binary index
+    faiss::IndexBinary* indexReader = (faiss::IndexBinary*) LoadBinaryIndexWithStream(ioReader);
+    if (!indexReader) throw std::runtime_error("ERROR: LOADBINARYINDEXWITHSTREAM IS NULL!!!\n");
+    faiss::IndexBinaryIDMap * binaryIdMap = (faiss::IndexBinaryIDMap *) indexReader;
+    if (!binaryIdMap->index) throw std::runtime_error("ERROR: hnswBinary IS NULL!!!\n");
+    faiss::IndexBinaryHNSW * hnswBinary = (faiss::IndexBinaryHNSW *)(binaryIdMap->index); // hnsw index sits on top
+    if (!hnswBinary->storage) throw std::runtime_error("ERROR: hnswBinary->Storage is NULL!!");
+    faiss::IndexBinaryFlat * codesIndex = (faiss::IndexBinaryFlat *) hnswBinary->storage; // since binary storage is binary flat codes
+    // faiss::HNSW hnsw = hnswBinary->hnsw;
+    // if (!codesIndex->xb) throw std::runtime_error("codes are broken!!\n");
+    std::vector<uint8_t> codes = codesIndex->xb; // TODO is there a way to do this without a copy?
+
+    std::vector<uint8_t> * codes_ptr = &(codesIndex->xb); // TODO is there a way to do this without a copy?
+
+    // std::cout << "printing with metricType " << metricType << " \n";
+    // if (hnswBinary->metric_type == nullptr) {
+    //     // std::cout
+    // // }
+    // std::cout << "just before we print the metric type: " << std::endl;
+    // std::cout << "metric type: " << std::to_string(indexReader->metric_type) << " and actual metric type from java " << metricType <<  "\n----\n" << std::endl;
+
+    // Create the new float index
+    // for some reason there's a segfault here...
+    // knn_jni::faiss_wrapper::FaissIndexBQ * alteredStorage = new knn_jni::faiss_wrapper::FaissIndexBQ(indexReader->d, codes);
+
+    // for whatever reason, it doesn't pass in the innerproduct correctly, so we're also going to pass in params here.
+    // knn_jni::faiss_wrapper::FaissIndexBQ * alteredStorage= nullptr;
+    if (quantLevel == knn_jni::QuantizationLevel::TWO_BIT) {
+        FaissIndexUQ2Bit * alteredStorage =  nullptr;
+
+        // alteredStorage = new FaissIndexUQ2Bit(
+        //     indexReader->d, codes, metricType, above_threshold_mean_vector, below_threshold_mean_vector
+        // );
+
+        alteredStorage = new FaissIndexUQ2Bit(
+            indexReader->d, codes_ptr, metricType, above_threshold_mean_vector, below_threshold_mean_vector
+        );
+
+
+
+            // indexReader->metric_type);
+        faiss::IndexHNSW * alteredIndexHNSW = new faiss::IndexHNSW(alteredStorage, 32);     //TODO fix M
+        alteredIndexHNSW->hnsw = hnswBinary->hnsw;
+        faiss::IndexIDMap * alteredIdMap = new faiss::IndexIDMap(alteredIndexHNSW);
+        alteredStorage->init(alteredIndexHNSW, alteredIdMap);
+        alteredIdMap->id_map = binaryIdMap->id_map;
+        return (jlong) alteredIdMap;
+
+
+    } else if (quantLevel == knn_jni::QuantizationLevel::FOUR_BIT) {
+
+        FaissIndexUQ4Bit * alteredStorage= nullptr;
+        alteredStorage = new FaissIndexUQ4Bit(
+            indexReader->d, codes, metricType, above_threshold_mean_vector, below_threshold_mean_vector
+        );
+        
+            // indexReader->metric_type);
+        faiss::IndexHNSW * alteredIndexHNSW = new faiss::IndexHNSW(alteredStorage, 32);     //TODO fix M
+        alteredIndexHNSW->hnsw = hnswBinary->hnsw;
+        faiss::IndexIDMap * alteredIdMap = new faiss::IndexIDMap(alteredIndexHNSW);
+        alteredStorage->init(alteredIndexHNSW, alteredIdMap);
+        alteredIdMap->id_map = binaryIdMap->id_map;
+        return (jlong) alteredIdMap;
+        
+    } else {
+        throw std::runtime_error("invalid quantization level for ADCUnary");
+    }
+    
+        // indexReader->metric_type);
+}
+
+// TEST here
+jlong knn_jni::faiss_wrapper::LoadIndexWithStreamADC(faiss::IOReader* ioReader, faiss::MetricType metricType) {
+    if (ioReader == nullptr)  {
+        throw std::runtime_error("IOReader cannot be null");
+    }
+
+    // std::cout << "load index with stream adc called!" << std::endl;
+
+    // Extract the relevant info from the binary index
+    faiss::IndexBinary* indexReader = (faiss::IndexBinary*) LoadBinaryIndexWithStream(ioReader);
+    if (!indexReader) throw std::runtime_error("ERROR: LOADBINARYINDEXWITHSTREAM IS NULL!!!\n");
+    faiss::IndexBinaryIDMap * binaryIdMap = (faiss::IndexBinaryIDMap *) indexReader;
+    if (!binaryIdMap->index) throw std::runtime_error("ERROR: hnswBinary IS NULL!!!\n");
+    faiss::IndexBinaryHNSW * hnswBinary = (faiss::IndexBinaryHNSW *)(binaryIdMap->index); // hnsw index sits on top
+    if (!hnswBinary->storage) throw std::runtime_error("ERROR: hnswBinary->Storage is NULL!!");
+    faiss::IndexBinaryFlat * codesIndex = (faiss::IndexBinaryFlat *) hnswBinary->storage; // since binary storage is binary flat codes
+    // faiss::HNSW hnsw = hnswBinary->hnsw;
+    // if (!codesIndex->xb) throw std::runtime_error("codes are broken!!\n");
+    // std::vector<uint8_t> codes = codesIndex->xb;
+
+    std::vector<uint8_t> * codes_ptr = &(codesIndex->xb); // TODO is there a way to do this without a copy?
+
+
+    // std::cout << "printing with metricType " << metricType << " \n";
+    // if (hnswBinary->metric_type == nullptr) {
+    //     // std::cout
+    // // }
+    // std::cout << "just before we print the metric type: " << std::endl;
+    // std::cout << "metric type: " << std::to_string(indexReader->metric_type) << " and actual metric type from java " << metricType <<  "\n----\n" << std::endl;
+
+    // Create the new float index
+    // for some reason there's a segfault here...
+    // knn_jni::faiss_wrapper::FaissIndexBQ * alteredStorage = new knn_jni::faiss_wrapper::FaissIndexBQ(indexReader->d, codes);
+
+    // for whatever reason, it doesn't pass in the innerproduct correctly, so we're also going to pass in params here.
+
+    // knn_jni::faiss_wrapper::FaissIndexBQ * alteredStorage = new knn_jni::faiss_wrapper::FaissIndexBQ(
+    //     indexReader->d, codes, metricType);
+
+        knn_jni::faiss_wrapper::FaissIndexBQ * alteredStorage = new knn_jni::faiss_wrapper::FaissIndexBQ(
+            indexReader->d, codes_ptr, metricType);
+        // indexReader->metric_type);
+    faiss::IndexHNSW * alteredIndexHNSW = new faiss::IndexHNSW(alteredStorage, 32);     //TODO fix M
+    alteredIndexHNSW->hnsw = hnswBinary->hnsw;
+    faiss::IndexIDMap * alteredIdMap = new faiss::IndexIDMap(alteredIndexHNSW);
+    alteredStorage->init(alteredIndexHNSW, alteredIdMap);
+    alteredIdMap->id_map = binaryIdMap->id_map;
+    return (jlong) alteredIdMap;
 }
 
 jlong knn_jni::faiss_wrapper::LoadBinaryIndex(knn_jni::JNIUtilInterface * jniUtil, JNIEnv * env, jstring indexPathJ) {
@@ -637,6 +873,8 @@ jobjectArray knn_jni::faiss_wrapper::QueryIndex_WithFilter(knn_jni::JNIUtilInter
             }
         }
         try {
+            // std::cout << "going through search now, here is the rawQueryvector\n";
+            // std::cout << rawQueryvector[0] << "ahahaha\n";
             indexReader->search(1, rawQueryvector, kJ, dis.data(), ids.data(), searchParameters);
         } catch (...) {
             jniUtil->ReleaseFloatArrayElements(env, queryVectorJ, rawQueryvector, JNI_ABORT);
@@ -1005,7 +1243,7 @@ jbyteArray knn_jni::faiss_wrapper::TrainByteIndex(knn_jni::JNIUtilInterface * jn
 }
 
 
-faiss::MetricType TranslateSpaceToMetric(const std::string& spaceType) {
+faiss::MetricType knn_jni::faiss_wrapper::TranslateSpaceToMetric(const std::string& spaceType) {
     if (spaceType == knn_jni::L2) {
         return faiss::METRIC_L2;
     }
@@ -1019,7 +1257,7 @@ faiss::MetricType TranslateSpaceToMetric(const std::string& spaceType) {
         return faiss::METRIC_L2;
     }
 
-    throw std::runtime_error("Invalid spaceType");
+    throw std::runtime_error("Invalid spaceType: " + spaceType);
 }
 
 void SetExtraParameters(knn_jni::JNIUtilInterface * jniUtil, JNIEnv *env,

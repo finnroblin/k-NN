@@ -6,6 +6,7 @@
 package org.opensearch.knn.quantization.quantizer;
 
 import org.opensearch.knn.index.engine.faiss.QFrameBitEncoder;
+import org.opensearch.knn.index.SpaceType;
 import org.opensearch.knn.quantization.enums.ScalarQuantizationType;
 import org.opensearch.knn.quantization.models.quantizationOutput.QuantizationOutput;
 import org.opensearch.knn.quantization.models.quantizationParams.ScalarQuantizationParams;
@@ -57,6 +58,7 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
     }
 
     public OneBitScalarQuantizer(final int samplingSize, final Sampler sampler) {
+
         this.samplingSize = samplingSize;
         this.shouldUseRandomRotation = QFrameBitEncoder.DEFAULT_ENABLE_RANDOM_ROTATION;
         this.sampler = sampler;
@@ -106,6 +108,83 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
         output.prepareQuantizedVector(vectorLength);
         BitPacker.quantizeAndPackBits(vector, thresholds, output.getQuantizedVector());
     }
+
+    @Override
+    public void transform(float[] vector, final QuantizationState state) {
+        if (vector == null) {
+            return;
+        }
+        validateState(state);
+        OneBitScalarQuantizationState binaryState = (OneBitScalarQuantizationState) state;
+        float[][] rotationMatrix = binaryState.getRotationMatrix();
+        if (rotationMatrix != null) {
+            vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
+        }
+
+        for (int i = 0; i < vector.length; i++) {
+            vector[i] = vector[i] >= binaryState.getMeanThresholds()[i] ? 1.0f : 0.0f;
+        }
+    }
+
+    @Override
+    public void transformWithADC(float[] vector, final QuantizationState state, final SpaceType spaceType) {
+        // transform(vector, state);
+        // log.info("transformWithADCCalled");
+        validateState(state);
+        OneBitScalarQuantizationState binaryState = (OneBitScalarQuantizationState) state;
+        float[][] rotationMatrix = binaryState.getRotationMatrix();
+        // log.info("vec value before rot {}", vector[0]);
+        float[] rotatedVector = vector.clone();
+        if (rotationMatrix != null) {
+            // log.info("Rotation matrix called");
+            // log.info("first transfomr w adc value of rot mat: {}", rotationMatrix[0][0]);
+
+            rotatedVector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
+        }
+        // log.info("vec value after rot {}", vector[0]);
+        // transformVectorWithADCNoCorrection(vector, binaryState);
+
+        if (shouldDoADCCorrection(spaceType)) {
+            // log.info("transform with correction called");
+            // transformVectorWithADCCorrection(vector, binaryState);
+            transformVectorWithADCCorrection(rotatedVector, binaryState);
+        } else {
+            // log.info("transform with no correction called");
+            transformVectorWithADCNoCorrection(vector, binaryState);
+            // transformVectorWithADCCorrection(rotatedVector, binaryState);
+        }
+        // vector = rotatedVector;
+        // log.info("vector now is: {}", vector);
+        System.arraycopy(rotatedVector, 0, vector, 0, vector.length);
+        // log.info("vector now is: {}", vector);
+    }
+
+    private boolean shouldDoADCCorrection(SpaceType spaceType) {
+        return SpaceType.L2.equals(spaceType);
+    }
+
+    private void transformVectorWithADCNoCorrection(float[] vector, final OneBitScalarQuantizationState binaryState) {
+        for (int i = 0; i < vector.length; ++i) {
+            float aboveThreshold = binaryState.getAboveThresholdMeans()[i];
+            float belowThreshold = binaryState.getBelowThresholdMeans()[i];
+
+            vector[i] = (vector[i] - belowThreshold) / (aboveThreshold - belowThreshold);
+        }
+    }
+
+    private void transformVectorWithADCCorrection(float[] vector, final OneBitScalarQuantizationState binaryState) {
+        // log.info("vec value in the actual adc func {}", vector[0]);
+        for (int i = 0; i < vector.length; i++) {
+            float aboveThreshold = binaryState.getAboveThresholdMeans()[i];
+            float belowThreshold = binaryState.getBelowThresholdMeans()[i];
+            float correction = (aboveThreshold - belowThreshold) * (aboveThreshold - belowThreshold);
+            vector[i] = (vector[i] - belowThreshold) / (aboveThreshold - belowThreshold);
+            vector[i] = correction * (vector[i] - 0.5f) + 0.5f;
+        }
+        // log.info("vec value in the actual adc func after trans {}", vector[0]);
+    }
+
+    // private
 
     /**
      * Validates the quantization state to ensure it is of the expected type.
