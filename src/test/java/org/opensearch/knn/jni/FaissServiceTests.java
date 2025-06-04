@@ -76,7 +76,10 @@ public class FaissServiceTests extends KNNTestCase {
             assertTrue(directory.fileLength(indexFileName1) > 0);
 
             try (IndexInput indexInput = directory.openInput(indexFileName1, IOContext.DEFAULT)) {
-                long indexAddr = FaissService.loadIndexWithStreamADC(new IndexInputWithBuffer(indexInput), SpaceType.L2.toString());
+                // TODO: change this to pass ADC params....
+                long indexAddr = FaissService.loadIndexWithStreamADC(new IndexInputWithBuffer(indexInput)
+                // , SpaceType.L2.toString()
+                );
                 // Map.of(KNNConstants.SPACE_TYPE, spaceTypeForADC));
                 // Load the index for ADC, effectively converting it from a binary HNSW index to a regular HNSW index
                 for (float[] query : testData.queries) {

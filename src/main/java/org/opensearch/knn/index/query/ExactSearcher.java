@@ -201,8 +201,12 @@ public class ExactSearcher {
         SegmentLevelQuantizationInfo segmentLevelQuantizationInfo = null;
         if (exactSearcherContext.isUseQuantizedVectorsForSearch()) {
             // Build Segment Level Quantization info.
-            segmentLevelQuantizationInfo = SegmentLevelQuantizationInfo.build(reader, fieldInfo, knnQuery.getField(),
-                    reader.getSegmentInfo().info.getVersion());
+            segmentLevelQuantizationInfo = SegmentLevelQuantizationInfo.build(
+                reader,
+                fieldInfo,
+                knnQuery.getField(),
+                reader.getSegmentInfo().info.getVersion()
+            );
             // Quantize the Query Vector Once. Or transform it
             if (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)) {
                 SegmentLevelQuantizationUtil.transformVector(knnQuery.getQueryVector(), segmentLevelQuantizationInfo);

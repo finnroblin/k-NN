@@ -36,8 +36,11 @@ public class QFrameBitEncoder implements Encoder {
     public static final String BITCOUNT_PARAM = "bits";
     private static final int DEFAULT_BITS = 1;
     public static final String ENABLE_RANDOM_ROTATION_PARAM = "random_rotation";
+    public static final String ENABLE_ADC_PARAM = "enable_adc";
+    public static final Boolean DEFAULT_ENABLE_ADC = false;
     public static final Boolean DEFAULT_ENABLE_RANDOM_ROTATION = false;
     private static final Set<Integer> validBitCounts = ImmutableSet.of(1, 2, 4);
+    private static final Set<Integer> supportBitCountsForADC = ImmutableSet.of(1);
     private static final Set<VectorDataType> SUPPORTED_DATA_TYPES = ImmutableSet.of(VectorDataType.FLOAT);
 
     /**
@@ -57,13 +60,17 @@ public class QFrameBitEncoder implements Encoder {
             BITCOUNT_PARAM,
             new Parameter.IntegerParameter(BITCOUNT_PARAM, DEFAULT_BITS, (v, context) -> validBitCounts.contains(v))
         )
-
         .addParameter(
             ENABLE_RANDOM_ROTATION_PARAM,
             new Parameter.BooleanParameter(ENABLE_RANDOM_ROTATION_PARAM, DEFAULT_ENABLE_RANDOM_ROTATION, (v, context) -> {
                 return true; // all booleans are valid for this toggleable setting.
             })
         )
+        .addParameter(ENABLE_ADC_PARAM, new Parameter.BooleanParameter(ENABLE_RANDOM_ROTATION_PARAM, DEFAULT_ENABLE_ADC, (v, context) -> {
+            // all booleans are valid for this toggleable setting. However, ADC is only supported
+            // for certain bit counts.
+            return true;
+        }))
         .setKnnLibraryIndexingContextGenerator(((methodComponent, methodComponentContext, knnMethodConfigContext) -> {
 
             QuantizationConfig.QuantizationConfigBuilder quantizationConfigBuilder = QuantizationConfig.builder();
@@ -71,6 +78,12 @@ public class QFrameBitEncoder implements Encoder {
             int bitCount = (int) methodComponentContext.getParameters().getOrDefault(BITCOUNT_PARAM, DEFAULT_BITS);
             boolean enableRandomRotation = (boolean) methodComponentContext.getParameters()
                 .getOrDefault(ENABLE_RANDOM_ROTATION_PARAM, DEFAULT_ENABLE_RANDOM_ROTATION);
+
+            boolean enableADC = (boolean) methodComponentContext.getParameters().getOrDefault(ENABLE_ADC_PARAM, DEFAULT_ENABLE_ADC);
+
+            if (enableADC && !supportBitCountsForADC.contains(bitCount)) {
+                throw new IllegalArgumentException(String.format(Locale.ROOT, "ADC is not supported for bit count: %d", bitCount));
+            }
 
             ScalarQuantizationType quantizationType = switch (bitCount) {
                 case 1 -> ScalarQuantizationType.ONE_BIT;

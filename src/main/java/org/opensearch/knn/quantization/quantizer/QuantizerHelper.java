@@ -46,8 +46,6 @@ class QuantizerHelper {
             sampledIndices,
             ONE_BIT_BITS_PER_COORDINATE
         );
-        // TODO: need to refactor below/above into the QuanizationHelper.
-        trainingRequest.resetVectorValues();
 
         return OneBitScalarQuantizationState.builder()
             .quantizationParams(quantizationParams)
@@ -120,7 +118,6 @@ class QuantizerHelper {
     @AllArgsConstructor
     @Builder
     public class QuantizerHelperResult {
-        @NonNull
         float[][] rotationMatrix;
         @NonNull
         float[][] thresholds;
@@ -154,10 +151,10 @@ class QuantizerHelper {
             assert thresholds.length == 1;
             // grab above and below threshold means for ADC
             Pair<float[], float[]> belowAbove = calculateBelowAboveThresholdMeans(
-                    trainingRequest,
-                    thresholds[0],
-                    sampledIndices,
-                    rotationMatrix
+                trainingRequest,
+                thresholds[0],
+                sampledIndices,
+                rotationMatrix
             );
             return new QuantizerHelperResult(rotationMatrix, thresholds, belowAbove.getA(), belowAbove.getB());
         } else {
@@ -219,6 +216,7 @@ class QuantizerHelper {
 
         return new Pair<>(mean, sumSq);
     }
+
     private static Pair<float[], float[]> calculateBelowAboveThresholdMeans(
         TrainingRequest<float[]> request,
         float[] thresholds,
@@ -232,19 +230,16 @@ class QuantizerHelper {
         for (int docId : sampledIndices) {
             float[] vector = request.getVectorAtThePosition(docId).clone(); // vector is not rotated.
             if (rotationMatrix != null) {
-                // log.info("logging with rotation, before 0th {}", vector[0]);
                 vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
             }
-            // log.info("vector 1st value is: {}", vector[0]);
             if (vector == null) {
                 throw new IllegalArgumentException("Vector at sampled index " + docId + " is null.");
             }
 
             for (int d = 0; d < dim; d++) {
                 // vector has been rotated.
-                if (vector[d] <= thresholds[d]) { // thresholds have been rotated.
+                if (vector[d] <= thresholds[d]) {
                     // threshold were generated from unrotated vectors and then rotated.
-                    // if (vector[d] <= 0.0f) {
                     below[d] += vector[d];
                     belowCount[d]++;
                 } else {

@@ -49,7 +49,6 @@ import static org.opensearch.knn.index.query.parser.RescoreParser.RESCORE_PARAME
 
 import org.opensearch.knn.quantization.enums.ScalarQuantizationType;
 import org.opensearch.knn.quantization.models.quantizationParams.ScalarQuantizationParams;
-import org.opensearch.knn.quantization.models.quantizationState.MultiBitScalarQuantizationState;
 
 public class IndexUtil {
 
@@ -294,16 +293,16 @@ public class IndexUtil {
             loadParameters.put("quantization_level", quantization_level);
             loadParameters.put("space_type", spaceType.getValue());
 
-            if (isMultiBit(quantization_level)) {
-                loadParameters.put(
-                    "above_threshold_means",
-                    ((MultiBitScalarQuantizationState) (segmentLevelQuantizationInfo.getQuantizationState())).getAboveThresholdMeans()
-                ); // TODO: refactor this so no dynamic cast...
-                loadParameters.put(
-                    "below_threshold_means",
-                    ((MultiBitScalarQuantizationState) segmentLevelQuantizationInfo.getQuantizationState()).getBelowThresholdMeans()
-                );
-            }
+            // if (isMultiBit(quantization_level)) {
+            // loadParameters.put(
+            // "above_threshold_means",
+            // ((MultiBitScalarQuantizationState) (segmentLevelQuantizationInfo.getQuantizationState())).getAboveThresholdMeans()
+            // ); // TODO: refactor this so no dynamic cast...
+            // loadParameters.put(
+            // "below_threshold_means",
+            // ((MultiBitScalarQuantizationState) segmentLevelQuantizationInfo.getQuantizationState()).getBelowThresholdMeans()
+            // );
+            // }
         }
 
         return Collections.unmodifiableMap(loadParameters);
@@ -359,8 +358,6 @@ public class IndexUtil {
     }
 
     public static boolean isADCEnabled(KNNEngine knnEngine, Map<String, Object> parameters) {
-        // return true;
-        // return false;
         return KNNEngine.FAISS == knnEngine && parameters.get("adc_enabled") != null && (boolean) parameters.get("adc_enabled");
     }
 

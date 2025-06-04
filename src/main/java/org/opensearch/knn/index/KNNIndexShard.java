@@ -194,7 +194,7 @@ public class KNNIndexShard {
                         reader,
                         fieldInfo,
                         fieldInfo.name,
-                            reader.getSegmentInfo().info.getVersion()
+                        reader.getSegmentInfo().info.getVersion()
                     );
                     engineFiles.addAll(
                         getEngineFileContexts(
@@ -204,14 +204,15 @@ public class KNNIndexShard {
                             fileExtension,
                             spaceType,
                             modelId,
-                                // FieldInfoExtractor.extractQuantizationConfig(fieldInfo) == QuantizationConfig.EMPTY
-                                // ? VectorDataType.get(
-                                // fieldInfo.attributes().getOrDefault(VECTOR_DATA_TYPE_FIELD, VectorDataType.FLOAT.getValue())
-                                // )
-                                // : VectorDataType.BINARY
-                            FieldInfoExtractor.extractQuantizationConfig(fieldInfo,
-                                    reader.getSegmentInfo().info.getVersion()
-                                    ) == QuantizationConfig.EMPTY
+                            // FieldInfoExtractor.extractQuantizationConfig(fieldInfo) == QuantizationConfig.EMPTY
+                            // ? VectorDataType.get(
+                            // fieldInfo.attributes().getOrDefault(VECTOR_DATA_TYPE_FIELD, VectorDataType.FLOAT.getValue())
+                            // )
+                            // : VectorDataType.BINARY
+                            FieldInfoExtractor.extractQuantizationConfig(
+                                fieldInfo,
+                                reader.getSegmentInfo().info.getVersion()
+                            ) == QuantizationConfig.EMPTY
                                 ? VectorDataType.get(
                                     fieldInfo.attributes().getOrDefault(VECTOR_DATA_TYPE_FIELD, VectorDataType.FLOAT.getValue())
                                 )

@@ -11,7 +11,6 @@ import org.apache.lucene.index.LeafReader;
 import org.opensearch.knn.index.SpaceType;
 import org.opensearch.knn.index.codec.KNN990Codec.QuantizationConfigKNNCollector;
 import org.opensearch.knn.index.quantizationservice.QuantizationService;
-import org.opensearch.knn.quantization.enums.ScalarQuantizationType;
 import org.opensearch.knn.quantization.models.quantizationParams.ScalarQuantizationParams;
 import org.opensearch.knn.quantization.models.quantizationState.QuantizationState;
 
@@ -28,29 +27,15 @@ import java.util.Locale;
 public class SegmentLevelQuantizationUtil {
 
     public static boolean isAdcEnabled(SegmentLevelQuantizationInfo segmentLevelQuantizationInfo) {
-        // return true;
-        // return false;
-        // here we have to change the triggering based on whether we're in one bit, two bit, 4 bit, etc.
-        // return false;
-        return segmentLevelQuantizationInfo != null
-            && (ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.ONE_BIT)
-                .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
-                || ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.TWO_BIT)
-                    .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier())
-                || ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.FOUR_BIT)
-                    .equals(segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier()));
+        if (segmentLevelQuantizationInfo == null) return false;
+
+        if (segmentLevelQuantizationInfo.getQuantizationParams() instanceof ScalarQuantizationParams scalarQuantizationParams) {
+            return scalarQuantizationParams.isEnableADC();
+        } else {
+            return false;
+        }
     }
 
-    // public static float[] getAboveThresholdMeans(SegmentLevelQuantizationInfo segmentLevelQuantizationInfo) {
-    // return segmentLevelQuantizationInfo.quantizationState.getAboveThresholdMeans();
-    // }
-
-    // public static float[] getAboveThresholdMeans(SegmentLevelQuantizationInfo segmentLevelQuantizationInfo) {
-
-    // }
-    // public static String getQuantizationLevel(SegmentLevelQuantizationInfo segmentLevelQuantizationInfo) {
-    // return segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier();
-    // }
     /**
      * A simple function to convert a vector to a quantized vector for a segment.
      * @param vector array of float

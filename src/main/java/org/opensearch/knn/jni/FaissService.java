@@ -241,6 +241,12 @@ class FaissService {
      */
     public static native long loadIndexWithStreamADC(IndexInputWithBuffer readStream);
 
+    /*
+    params: spaceType: l2 or innerproduct
+    quantizationlevel (one or multibit, for multi-bit ADC in the future).
+    */
+    public static native long loadIndexWithStreamADCParams(IndexInputWithBuffer readStream, Map<String, Object> parameters);
+
     /**
      * Load a binary index into memory
      *

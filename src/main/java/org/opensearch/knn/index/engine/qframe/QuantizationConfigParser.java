@@ -22,6 +22,7 @@ public class QuantizationConfigParser {
     public static final String BINARY_TYPE = QFrameBitEncoder.NAME;
     public static final String BIT_COUNT_NAME = QFrameBitEncoder.BITCOUNT_PARAM;
     public static final String RANDOM_ROTATION_NAME = QFrameBitEncoder.ENABLE_RANDOM_ROTATION_PARAM;
+    public static final String ADC_NAME = QFrameBitEncoder.ENABLE_ADC_PARAM;
 
     /**
      * Parse quantization config to csv format
@@ -44,7 +45,14 @@ public class QuantizationConfigParser {
             + quantizationConfig.getQuantizationType().getId();
 
         if (Version.CURRENT.onOrAfter(Version.V_3_1_0)) {
-            result = result + "," + RANDOM_ROTATION_NAME + SEPARATOR + quantizationConfig.isEnableRandomRotation();
+            result = result
+                + ","
+                + RANDOM_ROTATION_NAME
+                + SEPARATOR
+                + quantizationConfig.isEnableRandomRotation()
+                + SEPARATOR
+                + ADC_NAME
+                + quantizationConfig.isEnableADC();
         }
 
         return result;
@@ -70,7 +78,7 @@ public class QuantizationConfigParser {
 
     private static QuantizationConfig parseCurrentVersion(String csv) {
         String[] csvArray = CSVUtil.parse(csv);
-        if (csvArray.length != 3) {
+        if (csvArray.length != 4) {
             throw new IllegalArgumentException(String.format(Locale.ROOT, "Invalid csv for quantization config: \"%s\"", csv));
         }
 
@@ -85,8 +93,15 @@ public class QuantizationConfigParser {
         String isEnableRandomRotationValue = getValueOrThrow(RANDOM_ROTATION_NAME, csvArray[2]);
         boolean isEnableRandomRotation = Boolean.parseBoolean(isEnableRandomRotationValue);
 
+        String isEnableADCValue = getValueOrThrow(ADC_NAME, csvArray[3]);
+        boolean isEnableADC = Boolean.parseBoolean(isEnableADCValue);
+
         ScalarQuantizationType quantizationType = ScalarQuantizationType.fromId(bitCount);
-        return QuantizationConfig.builder().quantizationType(quantizationType).enableRandomRotation(isEnableRandomRotation).build();
+        return QuantizationConfig.builder()
+            .quantizationType(quantizationType)
+            .enableRandomRotation(isEnableRandomRotation)
+            .enableADC(isEnableADC)
+            .build();
     }
 
     private static QuantizationConfig parseLegacyVersion(String csv) {
