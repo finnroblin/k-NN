@@ -90,6 +90,10 @@ class QuantizerHelper {
         }
     }
 
+//    private static float[][] calculateThresholdsFromUserSpecifiedEndpoints(float[] mean, float[] stdDev, int bitsPerCoordinate, boolean isNormalized) {
+//
+//    }
+
     /**
      * Calculates thresholds used for multi-bit quantization.
      *
@@ -103,17 +107,22 @@ class QuantizerHelper {
         float[][] thresholds = new float[bitsPerCoordinate][dim];
         float coef = bitsPerCoordinate + 1;
 
-        for (int b = 0; b < bitsPerCoordinate; b++) {
-            float iCoef = -1 + 2 * (b + 1) / coef;
-            for (int d = 0; d < dim; d++) {
-                if (isNormalized) {
-                    // then threshold should only depend on standard deviation.
+        if (isNormalized) {
+            for (int b = 0; b < bitsPerCoordinate; b++) {
+                float iCoef = -1 + 2 * (b + 1) / coef;
+                for (int d = 0; d < dim; d++) {
                     thresholds[b][d] = iCoef * stdDev[d];
-                } else {
+                }
+            }
+        } else {
+            for (int b = 0; b < bitsPerCoordinate; b++) {
+                float iCoef = -1 + 2 * (b + 1) / coef;
+                for (int d = 0; d < dim; d++) {
                     thresholds[b][d] = mean[d] + iCoef * stdDev[d];
                 }
             }
         }
+
         return thresholds;
     }
 
