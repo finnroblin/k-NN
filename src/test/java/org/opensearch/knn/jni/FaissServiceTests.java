@@ -19,7 +19,6 @@ import org.opensearch.knn.index.VectorDataType;
 import org.opensearch.knn.index.engine.KNNEngine;
 import org.opensearch.knn.index.query.KNNQueryResult;
 import org.opensearch.knn.index.store.IndexInputWithBuffer;
-import org.opensearch.knn.index.util.IndexUtil;
 
 import java.io.IOException;
 import java.net.URL;
@@ -54,7 +53,7 @@ public class FaissServiceTests extends KNNTestCase {
 
     @SneakyThrows
     public void testLoadIndexWithStreamADC() {
-        SpaceType[] spaceTypes = {SpaceType.L2, SpaceType.INNER_PRODUCT};
+        SpaceType[] spaceTypes = { SpaceType.L2, SpaceType.INNER_PRODUCT };
 
         for (SpaceType spaceType : spaceTypes) {
             Path tempDirPath = createTempDir();
@@ -64,20 +63,20 @@ public class FaissServiceTests extends KNNTestCase {
                 // Create an index with binary data
                 long memoryAddr = testData.loadBinaryDataToMemoryAddress();
                 TestUtils.createIndex(
-                        testData.indexData.docs,
-                        memoryAddr,
-                        testData.indexData.getDimension(),
-                        directory,
-                        indexFileName,
-                        ImmutableMap.of(
-                                INDEX_DESCRIPTION_PARAMETER,
-                                faissBinaryMethod,
-                                KNNConstants.SPACE_TYPE,
-                                SpaceType.HAMMING.getValue(),
-                                KNNConstants.VECTOR_DATA_TYPE_FIELD,
-                                VectorDataType.BINARY.getValue()
-                        ),
-                        KNNEngine.FAISS
+                    testData.indexData.docs,
+                    memoryAddr,
+                    testData.indexData.getDimension(),
+                    directory,
+                    indexFileName,
+                    ImmutableMap.of(
+                        INDEX_DESCRIPTION_PARAMETER,
+                        faissBinaryMethod,
+                        KNNConstants.SPACE_TYPE,
+                        SpaceType.HAMMING.getValue(),
+                        KNNConstants.VECTOR_DATA_TYPE_FIELD,
+                        VectorDataType.BINARY.getValue()
+                    ),
+                    KNNEngine.FAISS
                 );
                 assertTrue(directory.fileLength(indexFileName) > 0);
 
@@ -88,22 +87,19 @@ public class FaissServiceTests extends KNNTestCase {
                     // Use the exact string format expected by JNI util
                     parameters.put("quantization_level", "ScalarQuantizationParams_1");
 
-                    long indexAddr = FaissService.loadIndexWithStreamADCParams(
-                            new IndexInputWithBuffer(indexInput),
-                            parameters
-                    );
+                    long indexAddr = FaissService.loadIndexWithStreamADCParams(new IndexInputWithBuffer(indexInput), parameters);
 
                     // Test queries
                     for (float[] query : testData.queries) {
                         KNNQueryResult[] results = JNIService.queryIndex(
-                                indexAddr,
-                                query,
-                                10,
-                                Collections.emptyMap(),
-                                KNNEngine.FAISS,
-                                null,
-                                0,
-                                null
+                            indexAddr,
+                            query,
+                            10,
+                            Collections.emptyMap(),
+                            KNNEngine.FAISS,
+                            null,
+                            0,
+                            null
                         );
                         assertEquals(10, results.length);
                     }

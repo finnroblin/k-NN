@@ -82,7 +82,9 @@ public class QFrameBitEncoder implements Encoder {
             boolean enableADC = (boolean) methodComponentContext.getParameters().getOrDefault(ENABLE_ADC_PARAM, DEFAULT_ENABLE_ADC);
 
             if (enableADC && !supportBitCountsForADC.contains(bitCount)) {
-                throw new IllegalArgumentException(String.format(Locale.ROOT, "Validation Failed: ADC is not supported for bit count: %d", bitCount));
+                throw new IllegalArgumentException(
+                    String.format(Locale.ROOT, "Validation Failed: ADC is not supported for bit count: %d", bitCount)
+                );
             }
 
             ScalarQuantizationType quantizationType = switch (bitCount) {

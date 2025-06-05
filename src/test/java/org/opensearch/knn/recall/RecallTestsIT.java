@@ -283,7 +283,7 @@ public class RecallTestsIT extends KNNRestTestCase {
      */
     @SneakyThrows
     public void testRecall_whenADCEnabled_thenRecallAbove60Percent() {
-        List<SpaceType> spaceTypes = List.of(SpaceType.L2,SpaceType.INNER_PRODUCT);
+        List<SpaceType> spaceTypes = List.of(SpaceType.L2, SpaceType.INNER_PRODUCT);
         // , , SpaceType.COSINESIMIL);
         List<Integer> numBits = List.of(1);
         // , 2, 4);
