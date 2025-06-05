@@ -28,7 +28,6 @@
 #include "faiss/IndexBinaryIVF.h"
 #include "faiss/IndexBinaryHNSW.h"
 
-
 #include <algorithm>
 #include <jni.h>
 #include <string>
@@ -455,8 +454,6 @@ jlong knn_jni::faiss_wrapper::LoadIndexWithStream(faiss::IOReader* ioReader) {
         throw std::runtime_error("IOReader cannot be null");
     }
 
-    // std::cout << "Load index with stream called!" << std::endl;
-
     faiss::Index* indexReader =
       faiss::read_index(ioReader,
                         faiss::IO_FLAG_READ_ONLY
@@ -713,8 +710,6 @@ jobjectArray knn_jni::faiss_wrapper::QueryIndex_WithFilter(knn_jni::JNIUtilInter
             }
         }
         try {
-            // std::cout << "going through search now, here is the rawQueryvector\n";
-            // std::cout << rawQueryvector[0] << "ahahaha\n";
             indexReader->search(1, rawQueryvector, kJ, dis.data(), ids.data(), searchParameters);
         } catch (...) {
             jniUtil->ReleaseFloatArrayElements(env, queryVectorJ, rawQueryvector, JNI_ABORT);

@@ -471,12 +471,8 @@ public class KNNWeight extends Weight {
         float[] transformedVector = null;
         if (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)) {
             transformedVector = knnQuery.getQueryVector().clone();
-            log.info("Before transform: {}", transformedVector);
             SegmentLevelQuantizationUtil.transformVectorWithADC(transformedVector, segmentLevelQuantizationInfo, spaceType);
-            // SegmentLevelQuantizationUtil.transformVector(knnQuery.getQueryVector(), segmentLevelQuantizationInfo);
-            log.info("After transform: {}", transformedVector);
         } else {
-            log.info("Adc not called");
             quantizedVector = SegmentLevelQuantizationUtil.quantizeVector(knnQuery.getQueryVector(), segmentLevelQuantizationInfo);
         }
 

@@ -123,6 +123,7 @@ public class QuantizationConfigParser {
         return QuantizationConfig.builder()
             .quantizationType(quantizationType)
             .enableRandomRotation(QFrameBitEncoder.DEFAULT_ENABLE_RANDOM_ROTATION)  // default value for legacy version
+            .enableADC(QFrameBitEncoder.DEFAULT_ENABLE_ADC)  // default value for legacy version
             .build();
     }
 

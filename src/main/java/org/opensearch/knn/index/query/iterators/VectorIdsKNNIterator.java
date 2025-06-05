@@ -101,40 +101,17 @@ public class VectorIdsKNNIterator implements KNNIterator {
 
             faiss will return hamming distance codes, for SEGMENT CONSISTENCY we need to use exact search on HAMMING
         */
-        if (segmentLevelQuantizationInfo != null) {
-            // TODO here
-            if (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)) {
-                log.info("ComptueScore called w vector at position 0: " + vector[0] + " and queryvector at pos 0: " + queryVector[0]);
-                double distance = 0.0f;
-                for (int i = 0; i < vector.length; i++) {
-                    // TODO: This only makes sense for l2
-                    distance += Math.pow(vector[i] - queryVector[i], 2);
-                }
-                return (float) distance;
-            }
-            // redo the hamming so that we can stay consistent w the faiss scores.
+        // quantizedQueryVector is null in the case of ADC (see ExactSearcher::getKNNIterator).
+        // In the ADC case the query vector is kept in full precision and is not transformed (a vector copy is transformed).
+        // Therefore, we can rescore ADC query vectors as normal float vectors.
+        if (segmentLevelQuantizationInfo != null && quantizedQueryVector != null) {
             byte[] quantizedVector = SegmentLevelQuantizationUtil.quantizeVector(vector, segmentLevelQuantizationInfo);
             return SpaceType.HAMMING.getKnnVectorSimilarityFunction().compare(quantizedQueryVector, quantizedVector);
+        } else {
+            // Calculates a similarity score between the two vectors with a specified function. Higher similarity
+            // scores correspond to closer vectors.
+            return spaceType.getKnnVectorSimilarityFunction().compare(queryVector, vector);
         }
-        // Calculates a similarity score between the two vectors with a specified function. Higher similarity
-        // scores correspond to closer vectors.
-        // note: the query vector is not transformed here if using adc, which I think is expected.
-        return spaceType.getKnnVectorSimilarityFunction().compare(queryVector, vector);
-        // double distance = 0.0f;
-        // for (int i = 0; i < vector.length; i++) {
-        // // TODO: This only makes sense for l2
-        // distance += Math.pow(vector[i] - queryVector[i], 2);
-        // }
-        // return (float) distance;
-        // log.info("just doing the vector calc again" + vector[0] + " . " + vector[1]);
-
-        // double distance = 0.0f;
-        // for (int i = 0; i < vector.length; i++) {
-        // // TODO: This only makes sense for l2
-        // distance += Math.pow(vector[i] - queryVector[i], 2);
-        // }
-        // return (float) distance;
-
     }
 
     protected int getNextDocId() throws IOException {

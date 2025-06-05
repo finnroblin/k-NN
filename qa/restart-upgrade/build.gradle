@@ -125,6 +125,7 @@ testClusters {
                 knn_bwc_version.startsWith("2.16.")) {
             filter {
                 excludeTestsMatching "org.opensearch.knn.bwc.IndexingIT.testRandomRotationBWC"
+                excludeTestsMatching "org.opensearch.knn.bwc.IndexingIT.testADC_BWC"
             }
         }
 
@@ -277,6 +278,7 @@ testClusters {
                 knn_bwc_version.startsWith("2.16.")) {
             filter {
                 excludeTestsMatching "org.opensearch.knn.bwc.IndexingIT.testRandomRotationBWC"
+                excludeTestsMatching "org.opensearch.knn.bwc.IndexingIT.testADC_BWC"
             }
         }
 

@@ -103,14 +103,6 @@ public final class QuantizationService<T, R> {
      * @param quantizationState The {@link QuantizationState} containing the state of the trained quantizer.
      * @param vector The vector to be transformed.
      */
-    // public void transform(final QuantizationState quantizationState, final T vector) {
-    // // final String spaceType
-    // // )
-    // // {
-    // Quantizer<T, R> quantizer = QuantizerFactory.getQuantizer(quantizationState.getQuantizationParams());
-    // // TODO here we need to call an ADC method based on state.
-    // quantizer.transform(vector, quantizationState);
-    // }
 
     /**
      * Applies ADC transformation to the given vector using the specified {@link QuantizationState}.
@@ -120,17 +112,8 @@ public final class QuantizationService<T, R> {
      */
     public void transformWithADC(final QuantizationState quantizationState, T vector, final SpaceType spaceType) {
         Quantizer<T, R> quantizer = QuantizerFactory.getQuantizer(quantizationState.getQuantizationParams());
-        // TODO here we need to call an ADC method based on state.
-        // if (quantizer instanceof OneBitScalarQuantizer oneBitScalarQuantizer) {
-        // log.info("quantizationService quantizer called");
-        // oneBitScalarQuantizer.transformWithADC(vector, quantizationState, spaceType);
-        // }
-        // else {
-        // quantizer.transform(vector, quantizationState);
-        // }
-        // log.info("vector before : {}", vector);
+
         quantizer.transformWithADC(vector, quantizationState, spaceType);
-        // log.info("vector after : {}", vector);
     }
 
     /**
