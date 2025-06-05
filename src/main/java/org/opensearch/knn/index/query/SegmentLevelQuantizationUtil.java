@@ -56,13 +56,13 @@ public class SegmentLevelQuantizationUtil {
         );
     }
 
-    public static void transformVector(final float[] vector, final SegmentLevelQuantizationInfo segmentLevelQuantizationInfo) {
-        if (segmentLevelQuantizationInfo == null) {
-            return;
-        }
-        final QuantizationService quantizationService = QuantizationService.getInstance();
-        quantizationService.transform(segmentLevelQuantizationInfo.getQuantizationState(), vector);
-    }
+    // public static void transformVector(final float[] vector, final SegmentLevelQuantizationInfo segmentLevelQuantizationInfo) {
+    // if (segmentLevelQuantizationInfo == null) {
+    // return;
+    // }
+    // final QuantizationService quantizationService = QuantizationService.getInstance();
+    // quantizationService.transform(segmentLevelQuantizationInfo.getQuantizationState(), vector);
+    // }
 
     public static void transformVectorWithADC(
         float[] vector,

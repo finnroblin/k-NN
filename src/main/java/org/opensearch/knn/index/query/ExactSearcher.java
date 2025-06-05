@@ -207,9 +207,9 @@ public class ExactSearcher {
                 knnQuery.getField(),
                 reader.getSegmentInfo().info.getVersion()
             );
-            // Quantize the Query Vector Once. Or transform it
+            // Quantize the Query Vector Once. Or transform it in the case of ADC.
             if (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)) {
-                SegmentLevelQuantizationUtil.transformVector(knnQuery.getQueryVector(), segmentLevelQuantizationInfo);
+                SegmentLevelQuantizationUtil.transformVectorWithADC(knnQuery.getQueryVector(), segmentLevelQuantizationInfo, spaceType);
             } else {
                 quantizedQueryVector = SegmentLevelQuantizationUtil.quantizeVector(knnQuery.getQueryVector(), segmentLevelQuantizationInfo);
             }

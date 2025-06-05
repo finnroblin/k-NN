@@ -66,9 +66,9 @@ public class QFrameBitEncoder implements Encoder {
                 return true; // all booleans are valid for this toggleable setting.
             })
         )
-        .addParameter(ENABLE_ADC_PARAM, new Parameter.BooleanParameter(ENABLE_RANDOM_ROTATION_PARAM, DEFAULT_ENABLE_ADC, (v, context) -> {
-            // all booleans are valid for this toggleable setting. However, ADC is only supported
-            // for certain bit counts.
+        .addParameter(ENABLE_ADC_PARAM, new Parameter.BooleanParameter(ENABLE_ADC_PARAM, DEFAULT_ENABLE_ADC, (v, context) -> {
+            // all booleans are valid for this toggleable setting. However, ADC is only supported for certain bit counts.
+            // That validation is handled as part of the knnLibraryIndexingContextGenerator builder logic below.
             return true;
         }))
         .setKnnLibraryIndexingContextGenerator(((methodComponent, methodComponentContext, knnMethodConfigContext) -> {
@@ -82,7 +82,7 @@ public class QFrameBitEncoder implements Encoder {
             boolean enableADC = (boolean) methodComponentContext.getParameters().getOrDefault(ENABLE_ADC_PARAM, DEFAULT_ENABLE_ADC);
 
             if (enableADC && !supportBitCountsForADC.contains(bitCount)) {
-                throw new IllegalArgumentException(String.format(Locale.ROOT, "ADC is not supported for bit count: %d", bitCount));
+                throw new IllegalArgumentException(String.format(Locale.ROOT, "Validation Failed: ADC is not supported for bit count: %d", bitCount));
             }
 
             ScalarQuantizationType quantizationType = switch (bitCount) {
@@ -94,6 +94,7 @@ public class QFrameBitEncoder implements Encoder {
 
             QuantizationConfig quantizationConfig = quantizationConfigBuilder.quantizationType(quantizationType)
                 .enableRandomRotation(enableRandomRotation)
+                .enableADC(enableADC)
                 .build();
 
             // We use the flat description because we are doing the quantization

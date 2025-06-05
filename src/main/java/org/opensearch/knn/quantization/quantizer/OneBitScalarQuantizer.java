@@ -19,6 +19,8 @@ import org.opensearch.knn.quantization.sampler.SamplingFactory;
 
 import java.io.IOException;
 
+import static org.opensearch.knn.common.KNNConstants.ADC_CORRECTION_FACTOR;
+
 /**
  * OneBitScalarQuantizer is responsible for quantizing vectors using a single bit per dimension.
  * It computes the mean of each dimension during training and then uses these means as thresholds
@@ -110,56 +112,28 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
     }
 
     @Override
-    public void transform(float[] vector, final QuantizationState state) {
-        if (vector == null) {
-            return;
-        }
-        validateState(state);
-        OneBitScalarQuantizationState binaryState = (OneBitScalarQuantizationState) state;
-        float[][] rotationMatrix = binaryState.getRotationMatrix();
-        if (rotationMatrix != null) {
-            vector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
-        }
-
-        for (int i = 0; i < vector.length; i++) {
-            vector[i] = vector[i] >= binaryState.getMeanThresholds()[i] ? 1.0f : 0.0f;
-        }
-    }
-
-    @Override
     public void transformWithADC(float[] vector, final QuantizationState state, final SpaceType spaceType) {
-        // transform(vector, state);
-        // log.info("transformWithADCCalled");
         validateState(state);
         OneBitScalarQuantizationState binaryState = (OneBitScalarQuantizationState) state;
         float[][] rotationMatrix = binaryState.getRotationMatrix();
-        // log.info("vec value before rot {}", vector[0]);
         float[] rotatedVector = vector.clone();
         if (rotationMatrix != null) {
-            // log.info("Rotation matrix called");
-            // log.info("first transfomr w adc value of rot mat: {}", rotationMatrix[0][0]);
-
             rotatedVector = RandomGaussianRotation.applyRotation(vector, rotationMatrix);
         }
-        // log.info("vec value after rot {}", vector[0]);
-        // transformVectorWithADCNoCorrection(vector, binaryState);
 
         if (shouldDoADCCorrection(spaceType)) {
-            // log.info("transform with correction called");
-            // transformVectorWithADCCorrection(vector, binaryState);
             transformVectorWithADCCorrection(rotatedVector, binaryState);
         } else {
-            // log.info("transform with no correction called");
-            transformVectorWithADCNoCorrection(vector, binaryState);
-            // transformVectorWithADCCorrection(rotatedVector, binaryState);
+            transformVectorWithADCNoCorrection(rotatedVector, binaryState);
         }
-        // vector = rotatedVector;
-        // log.info("vector now is: {}", vector);
+
         System.arraycopy(rotatedVector, 0, vector, 0, vector.length);
-        // log.info("vector now is: {}", vector);
     }
 
     private boolean shouldDoADCCorrection(SpaceType spaceType) {
+        // Note that correction will not work for cosine similarity since these vectors are normalized and correction will break
+        // normalization.
+        // A normalization-aware correction term may be added in the future so we can support inner product spaces.
         return SpaceType.L2.equals(spaceType);
     }
 
@@ -173,18 +147,14 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
     }
 
     private void transformVectorWithADCCorrection(float[] vector, final OneBitScalarQuantizationState binaryState) {
-        // log.info("vec value in the actual adc func {}", vector[0]);
         for (int i = 0; i < vector.length; i++) {
             float aboveThreshold = binaryState.getAboveThresholdMeans()[i];
             float belowThreshold = binaryState.getBelowThresholdMeans()[i];
-            float correction = (aboveThreshold - belowThreshold) * (aboveThreshold - belowThreshold);
+            double correction = Math.pow(aboveThreshold - belowThreshold, ADC_CORRECTION_FACTOR);
             vector[i] = (vector[i] - belowThreshold) / (aboveThreshold - belowThreshold);
-            vector[i] = correction * (vector[i] - 0.5f) + 0.5f;
+            vector[i] = (float) correction * (vector[i] - 0.5f) + 0.5f;
         }
-        // log.info("vec value in the actual adc func after trans {}", vector[0]);
     }
-
-    // private
 
     /**
      * Validates the quantization state to ensure it is of the expected type.

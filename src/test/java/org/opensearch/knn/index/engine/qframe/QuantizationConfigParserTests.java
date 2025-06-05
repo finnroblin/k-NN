@@ -56,6 +56,23 @@ public class QuantizationConfigParserTests extends KNNTestCase {
                 Version.LATEST
             )
         );
+        expectThrows(
+                IllegalArgumentException.class,
+                () -> QuantizationConfigParser.fromCsv(
+                        QuantizationConfigParser.TYPE_NAME
+                                + "="
+                                + QuantizationConfigParser.BINARY_TYPE
+                                + ","
+                                + QuantizationConfigParser.BIT_COUNT_NAME
+                                + "=2"
+                                + QuantizationConfigParser.RANDOM_ROTATION_NAME
+                                + "=false"
+                                + ","
+                                + QuantizationConfigParser.ADC_NAME
+                                + "=true",
+                        Version.LATEST
+                )
+        );
 
         assertEquals(
             QuantizationConfig.builder().quantizationType(ScalarQuantizationType.FOUR_BIT).build(),
@@ -68,6 +85,9 @@ public class QuantizationConfigParserTests extends KNNTestCase {
                     + "=4"
                     + ","
                     + QuantizationConfigParser.RANDOM_ROTATION_NAME
+                    + "=false"
+                    + ","
+                    + QuantizationConfigParser.ADC_NAME
                     + "=false",
                 Version.LATEST
             )
@@ -78,7 +98,7 @@ public class QuantizationConfigParserTests extends KNNTestCase {
         assertEquals("", QuantizationConfigParser.toCsv(null));
         assertEquals("", QuantizationConfigParser.toCsv(QuantizationConfig.EMPTY));
         assertEquals(
-            "type=binary,bits=2,random_rotation=false",
+            "type=binary,bits=2,random_rotation=false,enable_adc=false",
             QuantizationConfigParser.toCsv(QuantizationConfig.builder().quantizationType(ScalarQuantizationType.TWO_BIT).build())
         );
     }
@@ -102,7 +122,7 @@ public class QuantizationConfigParserTests extends KNNTestCase {
 
         assertEquals(
             QuantizationConfig.builder().quantizationType(ScalarQuantizationType.TWO_BIT).enableRandomRotation(false).build(),
-            QuantizationConfigParser.fromCsv("type=binary,bits=2,random_rotation=false", Version.LATEST)
+            QuantizationConfigParser.fromCsv("type=binary,bits=2,random_rotation=false,enable_adc=false", Version.LATEST)
         );
     }
 }

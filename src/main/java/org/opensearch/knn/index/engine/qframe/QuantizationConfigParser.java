@@ -50,8 +50,9 @@ public class QuantizationConfigParser {
                 + RANDOM_ROTATION_NAME
                 + SEPARATOR
                 + quantizationConfig.isEnableRandomRotation()
-                + SEPARATOR
+                + ","
                 + ADC_NAME
+                + SEPARATOR
                 + quantizationConfig.isEnableADC();
         }
 

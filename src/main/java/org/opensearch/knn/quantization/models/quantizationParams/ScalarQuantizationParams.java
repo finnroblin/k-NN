@@ -49,6 +49,12 @@ public class ScalarQuantizationParams implements QuantizationParams {
         this.enableADC = QFrameBitEncoder.DEFAULT_ENABLE_ADC;
     }
 
+    public ScalarQuantizationParams(ScalarQuantizationType quantizationType, boolean enableRandomRotation, boolean enableADC) {
+        sqType = quantizationType;
+        this.enableRandomRotation = enableRandomRotation;
+        this.enableADC = enableADC;
+    }
+
     // no-argument constructor for deserialization
     public ScalarQuantizationParams() {
         sqType = null;

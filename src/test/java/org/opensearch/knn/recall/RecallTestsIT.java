@@ -220,6 +220,114 @@ public class RecallTestsIT extends KNNRestTestCase {
      * 	"properties": {
      *     {
      *      "type": "knn_vector",
+     *      "dimension": {TEST_DIMENSION},
+     *      "mode": "on_disk"
+     *      "method": {
+     *          "name":"hnsw",
+     *          "engine":"faiss",
+     *          "space_type": "{SPACE_TYPE}",
+     *          "parameters":{
+     *              "m":{HNSW_M},
+     *              "ef_construction": {HNSW_EF_CONSTRUCTION},
+     *              "ef_search": {HNSW_EF_SEARCH},
+     *              "encoder": {
+     *                  "name": "binary",
+     *                  "parameters": {
+     *                      "bits": {num_bits},
+     *                      "random_rotation": true
+     *                  }
+     *              }
+     *          }
+     *       }
+     *     }
+     *   }
+     *
+     * }
+     * Recall values for seed F71F949325FE8B42:
+     * (note that the vectors in these tests are randomly sampled from a gaussian distribution.
+     * It's expected that random rotation does not outperform normal search in this case, and we only see benefits for
+     * non-random data with uneven variance across dimensions.)
+     * With Random Rotation ON:
+     * L2:
+     *     1 bit:  0.8773 recall
+     *     2 bits: 0.9451 recall
+     *     4 bits: 0.9678 recall
+     *
+     * INNER_PRODUCT:
+     *     1 bit:  0.6817 recall
+     *     2 bits: 0.7220 recall
+     *     4 bits: 0.7341 recall
+     *
+     * COSINE:
+     *     1 bit:  0.8710 recall
+     *     2 bits: 0.9416 recall
+     *     4 bits: 0.9700 recall
+     *
+     * With Random Rotation OFF:
+     * L2:
+     *     1 bit:  0.9208 recall
+     *     2 bits: 0.9746 recall
+     *     4 bits: 0.9924 recall
+     *
+     * INNER_PRODUCT:
+     *     1 bit:  0.7106 recall
+     *     2 bits: 0.7356 recall
+     *     4 bits: 0.7457 recall
+     *
+     * COSINE:
+     *     1 bit:  0.9107 recall
+     *     2 bits: 0.9677 recall
+     *     4 bits: 0.9860 recall
+     *
+     * Test duration: ~1 minute locally (m3 pro)
+     */
+    @SneakyThrows
+    public void testRecall_whenADCEnabled_thenRecallAbove60Percent() {
+        List<SpaceType> spaceTypes = List.of(SpaceType.L2,SpaceType.INNER_PRODUCT);
+        // , , SpaceType.COSINESIMIL);
+        List<Integer> numBits = List.of(1);
+        // , 2, 4);
+        for (SpaceType spaceType : spaceTypes) {
+            for (Integer bits : numBits) {
+                String indexName = createIndexName(KNNEngine.FAISS, spaceType) + "(" + bits + "bits)";
+                XContentBuilder builder = XContentFactory.jsonBuilder()
+                    .startObject()
+                    .startObject(PROPERTIES_FIELD)
+                    .startObject(TEST_FIELD_NAME)
+                    .field(TYPE, TYPE_KNN_VECTOR)
+                    .field(DIMENSION, TEST_DIMENSION)
+                    .field(MODE_PARAMETER, ON_DISK)
+                    .startObject(KNN_METHOD)
+                    .field(METHOD_PARAMETER_SPACE_TYPE, spaceType.getValue())
+                    .field(KNN_ENGINE, KNNEngine.FAISS.getName())
+                    .field(NAME, METHOD_HNSW)
+                    .startObject(PARAMETERS)
+                    .field(METHOD_PARAMETER_EF_CONSTRUCTION, HNSW_EF_CONSTRUCTION)
+                    .field(METHOD_PARAMETER_M, HNSW_M)
+                    .field(METHOD_PARAMETER_EF_SEARCH, 100)
+                    .startObject("encoder")
+                    .field(NAME, "binary")
+                    .startObject("parameters")
+                    .field("bits", (int) bits)
+                    .field(QFrameBitEncoder.ENABLE_ADC_PARAM, true)
+                    .endObject()
+                    .endObject()
+                    .endObject()
+                    .endObject()
+                    .endObject()
+                    .endObject()
+                    .endObject();
+                createIndexAndIngestDocs(indexName, TEST_FIELD_NAME, getSettings(), builder.toString());
+                assertRecall(indexName, spaceType, 0.1f);
+            }
+        }
+    }
+
+    /**
+     * {
+     * 	"properties": {
+     *     {
+     *      "type": "knn_vector",
      *      "dimension": {DIMENSION},
      *      "method": {
      *          "name":"hnsw",

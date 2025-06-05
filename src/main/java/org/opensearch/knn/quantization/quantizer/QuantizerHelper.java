@@ -226,7 +226,7 @@ class QuantizerHelper {
         int dim = thresholds.length;
         float[] below = new float[dim], above = new float[dim];
         int[] belowCount = new int[dim], aboveCount = new int[dim];
-
+        request.resetVectorValues();
         for (int docId : sampledIndices) {
             float[] vector = request.getVectorAtThePosition(docId).clone(); // vector is not rotated.
             if (rotationMatrix != null) {

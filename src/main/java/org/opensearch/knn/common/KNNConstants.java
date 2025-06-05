@@ -87,6 +87,7 @@ public class KNNConstants {
     public static final int QUANTIZATION_RANDOM_ROTATION_DEFAULT_SEED = 1212121212; // used to seed the RNG for reproducability in unit
                                                                                     // tests and benchmark results of the random gaussian
                                                                                     // rotation
+    public static final double ADC_CORRECTION_FACTOR = 2.0;
 
     // Lucene specific constants
     public static final String LUCENE_NAME = "lucene";

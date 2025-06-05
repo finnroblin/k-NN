@@ -47,9 +47,6 @@ import static org.opensearch.knn.common.KNNConstants.SPACE_TYPE;
 import static org.opensearch.knn.common.KNNConstants.VECTOR_DATA_TYPE_FIELD;
 import static org.opensearch.knn.index.query.parser.RescoreParser.RESCORE_PARAMETER;
 
-import org.opensearch.knn.quantization.enums.ScalarQuantizationType;
-import org.opensearch.knn.quantization.models.quantizationParams.ScalarQuantizationParams;
-
 public class IndexUtil {
 
     public static final String MODEL_NODE_ASSIGNMENT_KEY = KNNConstants.MODEL_NODE_ASSIGNMENT;
@@ -292,25 +289,9 @@ public class IndexUtil {
 
             loadParameters.put("quantization_level", quantization_level);
             loadParameters.put("space_type", spaceType.getValue());
-
-            // if (isMultiBit(quantization_level)) {
-            // loadParameters.put(
-            // "above_threshold_means",
-            // ((MultiBitScalarQuantizationState) (segmentLevelQuantizationInfo.getQuantizationState())).getAboveThresholdMeans()
-            // ); // TODO: refactor this so no dynamic cast...
-            // loadParameters.put(
-            // "below_threshold_means",
-            // ((MultiBitScalarQuantizationState) segmentLevelQuantizationInfo.getQuantizationState()).getBelowThresholdMeans()
-            // );
-            // }
         }
 
         return Collections.unmodifiableMap(loadParameters);
-    }
-
-    private static boolean isMultiBit(String quantization_level) {
-        return (quantization_level.equals(ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.TWO_BIT))
-            || quantization_level.equals(ScalarQuantizationParams.generateTypeIdentifier(ScalarQuantizationType.FOUR_BIT)));
     }
 
     public static boolean isClusterOnOrAfterMinRequiredVersion(String key) {

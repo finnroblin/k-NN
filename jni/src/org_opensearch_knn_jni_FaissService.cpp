@@ -300,57 +300,16 @@ JNIEXPORT jlong JNICALL Java_org_opensearch_knn_jni_FaissService_loadBinaryIndex
 }
 JNIEXPORT jlong JNICALL Java_org_opensearch_knn_jni_FaissService_loadIndexWithStreamADCParams
 (JNIEnv * env, jclass cls, jobject readStreamJ, jobject parametersJ) {
-    // std::unordered_map<std::string, jobject> methodParams;
-    // if (parametersJ != nullptr) {
-    //     methodParams = jniUtil->ConvertJavaMapToCppMap(env, parametersJ);
-    // }
     try {
-knn_jni::stream::NativeEngineIndexInputMediator mediator {&jniUtil, env, readStreamJ};
-
-    // Wrap the mediator with a glue code inheriting IOReader.
-knn_jni::stream::FaissOpenSearchIOReader faissOpenSearchIOReader {&mediator};
-
-// have different indices for 2 bit and 4 bit, or maybe keep them the same, not sure.
-// knn_jni::faiss_wrapper::
-// knn_jni::commons::
-// grab information aboutu the parameters -- for instance, what level of quantization. 
-
-return knn_jni::faiss_wrapper::LoadIndexWithStreamADCAndParams(&faissOpenSearchIOReader, &jniUtil, env, parametersJ);
-
-    } catch (...) {
-        jniUtil.CatchCppExceptionAndThrowJava(env);
-    }
-    return NULL;
-}
-
-JNIEXPORT jlong JNICALL Java_org_opensearch_knn_jni_FaissService_loadIndexWithStreamADC
-        // (JNIEnv * env, jclass cls, jobject readStream, jobject spaceTypeJ)
-        // (JNIEnv * env, jclass cls, jobject readStream, jobject parametersJ)
-        (JNIEnv * env, jclass cls, jobject readStream, jstring spaceTypeStringJ) 
-{
-    try {
-        // Create a mediator locally.
-        // Note that `indexInput` is `IndexInputWithBuffer` type.
-        knn_jni::stream::NativeEngineIndexInputMediator mediator {&jniUtil, env, readStream};
+        knn_jni::stream::NativeEngineIndexInputMediator mediator {&jniUtil, env, readStreamJ};
 
         // Wrap the mediator with a glue code inheriting IOReader.
         knn_jni::stream::FaissOpenSearchIOReader faissOpenSearchIOReader {&mediator};
 
-        // auto parametersCpp = jniUtil.ConvertJavaMapToCppMap(env, parametersJ);
-        // Grab the space type from the spaceType object, convert to a metric
-        // jobject spaceTypeJ = knn_jni::GetJObjectFromMapOrThrow(parametersCpp, knn_jni::SPACE_TYPE);
-
-        std::string spaceTypeCpp(jniUtil.ConvertJavaObjectToCppString(env, spaceTypeStringJ));
-        // std::cout << "spaceTypeCpp: " << spaceTypeCpp << std::endl;
-        faiss::MetricType metric = knn_jni::faiss_wrapper::TranslateSpaceToMetric(spaceTypeCpp);
-
-        // Pass IOReader to Faiss for loading vector index.
-        return knn_jni::faiss_wrapper::LoadIndexWithStreamADC(
-                &faissOpenSearchIOReader, metric);
+        return knn_jni::faiss_wrapper::LoadIndexWithStreamADCParams(&faissOpenSearchIOReader, &jniUtil, env, parametersJ);
     } catch (...) {
         jniUtil.CatchCppExceptionAndThrowJava(env);
     }
-
     return NULL;
 }
 

@@ -468,9 +468,15 @@ public class KNNWeight extends Weight {
         );
         // TODO: Change type of vector once more quantization methods are supported
         byte[] quantizedVector = null;
+        float[] transformedVector = null;
         if (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)) {
-            SegmentLevelQuantizationUtil.transformVector(knnQuery.getQueryVector(), segmentLevelQuantizationInfo);
+            transformedVector = knnQuery.getQueryVector().clone();
+            log.info("Before transform: {}", transformedVector);
+            SegmentLevelQuantizationUtil.transformVectorWithADC(transformedVector, segmentLevelQuantizationInfo, spaceType);
+            // SegmentLevelQuantizationUtil.transformVector(knnQuery.getQueryVector(), segmentLevelQuantizationInfo);
+            log.info("After transform: {}", transformedVector);
         } else {
+            log.info("Adc not called");
             quantizedVector = SegmentLevelQuantizationUtil.quantizeVector(knnQuery.getQueryVector(), segmentLevelQuantizationInfo);
         }
 
@@ -545,7 +551,7 @@ public class KNNWeight extends Weight {
                 } else {
                     results = JNIService.queryIndex(
                         indexAllocation.getMemoryAddress(),
-                        knnQuery.getQueryVector(),
+                        transformedVector == null ? knnQuery.getQueryVector() : transformedVector,
                         k,
                         knnQuery.getMethodParameters(),
                         knnEngine,
