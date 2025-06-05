@@ -5,6 +5,7 @@
 
 package org.opensearch.knn.quantization.quantizer;
 
+import lombok.extern.log4j.Log4j2;
 import org.opensearch.knn.quantization.models.quantizationParams.ScalarQuantizationParams;
 import org.opensearch.knn.quantization.models.quantizationState.MultiBitScalarQuantizationState;
 import org.opensearch.knn.quantization.models.quantizationState.OneBitScalarQuantizationState;
@@ -14,12 +15,15 @@ import oshi.util.tuples.Pair;
 
 import java.io.IOException;
 
+import static java.lang.Math.abs;
+
 /**
  * Utility class for calculating quantization state information for both
  * OneBit and MultiBit scalar quantizers. Handles computing thresholds,
  * below/above mean statistics, and rotation matrix application.
  */
 @UtilityClass
+@Log4j2
 class QuantizerHelper {
     private static final int ONE_BIT_BITS_PER_COORDINATE = 1;
 
@@ -94,7 +98,7 @@ class QuantizerHelper {
      * @param bitsPerCoordinate Number of bits per coordinate.
      * @return 2D array of thresholds of shape [bits][dimensions].
      */
-    private static float[][] calculateThresholds(float[] mean, float[] stdDev, int bitsPerCoordinate) {
+    private static float[][] calculateThresholds(float[] mean, float[] stdDev, int bitsPerCoordinate, boolean isNormalized) {
         int dim = mean.length;
         float[][] thresholds = new float[bitsPerCoordinate][dim];
         float coef = bitsPerCoordinate + 1;
@@ -102,7 +106,12 @@ class QuantizerHelper {
         for (int b = 0; b < bitsPerCoordinate; b++) {
             float iCoef = -1 + 2 * (b + 1) / coef;
             for (int d = 0; d < dim; d++) {
-                thresholds[b][d] = mean[d] + iCoef * stdDev[d];
+                if (isNormalized) {
+                    // then threshold should only depend on standard deviation.
+                    thresholds[b][d] = iCoef * stdDev[d];
+                } else {
+                    thresholds[b][d] = mean[d] + iCoef * stdDev[d];
+                }
             }
         }
         return thresholds;
@@ -110,6 +119,8 @@ class QuantizerHelper {
 
     private record QuantizerHelperResult(float[][] rotationMatrix, float[][] thresholds) {
     }
+
+    public record MeanAndStdDevResult(float[] mean, float[] stdDev, boolean isNormalized) {}
 
     private static QuantizerHelperResult calculateQuantizationStateHelper(
         TrainingRequest<float[]> trainingRequest,
@@ -126,16 +137,12 @@ class QuantizerHelper {
 
         float[][] thresholds;
 
-        Pair<float[], float[]> meanStd = calculateMeanAndStdDev(trainingRequest, sampledIndices, rotationMatrix);
-        thresholds = calculateThresholds(meanStd.getA(), meanStd.getB(), bitsPerCoordinate);
+        MeanAndStdDevResult meanStd = calculateMeanAndStdDev(trainingRequest, sampledIndices, rotationMatrix);
+        thresholds = calculateThresholds(meanStd.mean, meanStd.stdDev, bitsPerCoordinate, meanStd.isNormalized);
         // if bitsPerCoordinate = 1, there should only be one threshold (used to mean center coordinates).
         assert bitsPerCoordinate != 1 || thresholds.length == 1;
 
         return new QuantizerHelperResult(rotationMatrix, thresholds);
-    }
-
-    public static Pair<float[], float[]> calculateMeanAndStdDev(TrainingRequest<float[]> request, int[] sampledIndices) throws IOException {
-        return calculateMeanAndStdDev(request, sampledIndices, null);
     }
 
     /**
@@ -146,12 +153,16 @@ class QuantizerHelper {
      * @return Pair of (means[], stdDevs[]).
      * @throws IOException if vector access fails.
      */
-    public static Pair<float[], float[]> calculateMeanAndStdDev(
+    public static MeanAndStdDevResult calculateMeanAndStdDev(
         TrainingRequest<float[]> request,
         int[] sampledIndices,
         float[][] rotationMatrix
     ) throws IOException {
         float[] mean = null, sumSq = null;
+
+        // vacuously the empty sample is normalized. This will become false the first time we see a non-normalized vector.
+        boolean isNormalized = true;
+        float norm = 0.0f;
         request.resetVectorValues();
         for (int docId : sampledIndices) {
             float[] vector = request.getVectorAtThePosition(docId);
@@ -169,9 +180,24 @@ class QuantizerHelper {
                 sumSq = new float[vector.length];
             }
 
+
             for (int i = 0; i < vector.length; i++) {
+                if (isNormalized) {
+                    // only need to store vector norms if normalized...
+                    norm += vector[i] * vector[i];
+                }
                 mean[i] += vector[i];
                 sumSq[i] += vector[i] * vector[i];
+            }
+
+            // the first time we see a non-normalized vector we can conclude that the entire dataset is not noramlzied.
+            // Then we can skip the extra calculation work in the future.
+            //
+            if (isNormalized) {
+                if (abs(1.0f - norm) > 0.0001) {
+                    isNormalized = false;
+                }
+                norm = 0;
             }
         }
 
@@ -186,6 +212,9 @@ class QuantizerHelper {
             sumSq[i] = (float) Math.sqrt((sumSq[i] / n) - (mean[i] * mean[i]));
         }
 
-        return new Pair<>(mean, sumSq);
+        // here deal with normalization
+        log.info("Dataset is normalized: {}", isNormalized);
+//        return new Pair<>(mean, sumSq);
+        return new MeanAndStdDevResult(mean, sumSq, isNormalized);
     }
 }

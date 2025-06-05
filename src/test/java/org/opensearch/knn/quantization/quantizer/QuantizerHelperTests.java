@@ -23,10 +23,10 @@ public class QuantizerHelperTests extends KNNTestCase {
         TrainingRequest<float[]> request = new MockTrainingRequest(params, vectors);
         int[] sampledIndices = { 0, 1, 2 };
 
-        Pair<float[], float[]> result = QuantizerHelper.calculateMeanAndStdDev(request, sampledIndices);
+        QuantizerHelper.MeanAndStdDevResult result = QuantizerHelper.calculateMeanAndStdDev(request, sampledIndices, null);
 
-        assertArrayEquals(new float[] { 3f, 4f }, result.getA(), 0.01f);
-        assertArrayEquals(new float[] { (float) Math.sqrt(8f / 3), (float) Math.sqrt(8f / 3) }, result.getB(), 0.01f);
+        assertArrayEquals(new float[] { 3f, 4f }, result.mean(), 0.01f);
+        assertArrayEquals(new float[] { (float) Math.sqrt(8f / 3), (float) Math.sqrt(8f / 3) }, result.stdDev(), 0.01f);
     }
 
     public void testCalculateOneBitQuantizationState_basicFlow() throws IOException {
