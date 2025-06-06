@@ -102,7 +102,7 @@ class QuantizerHelper {
         for (int b = 0; b < bitsPerCoordinate; b++) {
             float iCoef = -1 + 2 * (b + 1) / coef;
             for (int d = 0; d < dim; d++) {
-                thresholds[b][d] = mean[d] + iCoef * stdDev[d];
+                thresholds[b][d] = iCoef * stdDev[d];
             }
         }
         return thresholds;
