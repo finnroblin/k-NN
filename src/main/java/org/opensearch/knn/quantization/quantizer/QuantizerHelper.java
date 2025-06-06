@@ -98,11 +98,12 @@ class QuantizerHelper {
         int dim = mean.length;
         float[][] thresholds = new float[bitsPerCoordinate][dim];
         float coef = bitsPerCoordinate + 1;
+        float[] coefArray = { -1.0f, -0.333333333333333f, 0.333333333333333f, 1.0f };
 
         for (int b = 0; b < bitsPerCoordinate; b++) {
             float iCoef = -1 + 2 * (b + 1) / coef;
             for (int d = 0; d < dim; d++) {
-                thresholds[b][d] = iCoef * stdDev[d];
+                thresholds[b][d] = coefArray[b] * stdDev[d];
             }
         }
         return thresholds;
