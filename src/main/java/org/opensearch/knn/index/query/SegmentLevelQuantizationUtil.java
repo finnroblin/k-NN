@@ -56,6 +56,15 @@ public class SegmentLevelQuantizationUtil {
         );
     }
 
+    /**
+     * Transform vector with ADC. ADC allows us to score full-precision query vectors against binary document vectors.
+     * The transformation formula is:
+     * q_d = (q_d - x_d) / (y_d - x_d) where x_d is the mean of all document entries quantized to 0 (the below threshold mean)
+     * and y_d is the mean of all document entries quantized to 1 (the above threshold mean).
+     * @param vector array of floats, modified in-place.
+     * @param segmentLevelQuantizationInfo quantization state including below and above threshold means to perform the transformation.
+     * @param spaceType spaceType (l2 or innerproduct). Used to identify whether an additional correction term should be applied.
+     */
     public static void transformVectorWithADC(
         float[] vector,
         final SegmentLevelQuantizationInfo segmentLevelQuantizationInfo,

@@ -6,6 +6,7 @@
 package org.opensearch.knn.quantization.models.requests;
 
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
 import org.opensearch.knn.index.engine.faiss.QFrameBitEncoder;
 
@@ -18,6 +19,7 @@ import java.io.IOException;
  */
 @Getter
 @AllArgsConstructor
+@Builder
 public abstract class TrainingRequest<T> {
     /**
      * The total number of vectors in one segment.

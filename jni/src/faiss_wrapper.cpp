@@ -465,6 +465,7 @@ jlong knn_jni::faiss_wrapper::LoadIndexWithStream(faiss::IOReader* ioReader) {
 jlong knn_jni::faiss_wrapper::LoadIndexWithStreamADCParams(faiss::IOReader* ioReader, knn_jni::JNIUtilInterface * jniUtil, JNIEnv * env, jobject methodParamsJ) {
     auto methodParams = jniUtil->ConvertJavaMapToCppMap(env, methodParamsJ);
 
+    // KNNConstants.QUANTIZATION_LEVEL_FAISS_INDEX_LOAD_PARAMETER
     auto quantization_level_it = methodParams.find("quantization_level");
     knn_jni::QuantizationLevel quantLevel = knn_jni::QuantizationLevel::NONE;
     if (quantization_level_it != methodParams.end()) {
@@ -473,6 +474,7 @@ jlong knn_jni::faiss_wrapper::LoadIndexWithStreamADCParams(faiss::IOReader* ioRe
         throw std::runtime_error("Quantization level not specified in params");
     }
 
+    // KNNConstants.SPACE_TYPE_FAISS_INDEX_LOAD_PARAMETER
     auto space_type_it = methodParams.find("space_type");
     faiss::MetricType metricType; // L2 by default.
     if (space_type_it!= methodParams.end()) {

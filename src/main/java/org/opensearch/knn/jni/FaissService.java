@@ -233,18 +233,24 @@ class FaissService {
      */
     public static native long loadIndexWithStream(IndexInputWithBuffer readStream);
 
-    /**
-     * Load an index into memory via a wrapping having Lucene's IndexInput with ADC
-     *
-     * @param readStream IndexInput wrapper having a Lucene's IndexInput reference.
-     * @return pointer to location in memory the index resides in
-     */
-    public static native long loadIndexWithStreamADC(IndexInputWithBuffer readStream);
+    // /**
+    // * Load an index into memory via a wrapping having Lucene's IndexInput with ADC
+    // *
+    // * @param readStream IndexInput wrapper having a Lucene's IndexInput reference.
+    // * @return pointer to location in memory the index resides in
+    // */
+    // public static native long loadIndexWithStreamADC(IndexInputWithBuffer readStream);
 
-    /*
-    params: spaceType: l2 or innerproduct
-    quantizationlevel (one or multibit, for multi-bit ADC in the future).
-    */
+
+    /**
+      * Load an index into memory via a wrapping having Lucene's IndexInput with ADC
+      *
+      * @param readStream IndexInput wrapper having a Lucene's IndexInput reference.
+      * @param parameters Map<String, Object> containing the following:
+      *                 SpaceType: l2 or innerproduct
+      *          quantizationlevel (one or multibit, for multi-bit ADC in the future).
+      * @return pointer to location in memory the index resides in
+      */
     public static native long loadIndexWithStreamADCParams(IndexInputWithBuffer readStream, Map<String, Object> parameters);
 
     /**

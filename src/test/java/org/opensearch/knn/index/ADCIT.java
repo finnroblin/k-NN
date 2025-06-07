@@ -5,5 +5,4 @@
 
 package org.opensearch.knn.index;
 
-public class ADCIT {
-}
+public class ADCIT {}

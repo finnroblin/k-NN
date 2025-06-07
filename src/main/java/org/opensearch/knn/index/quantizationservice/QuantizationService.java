@@ -98,17 +98,13 @@ public final class QuantizationService<T, R> {
     }
 
     /**
-     * Applies transformation to the given vector using the specified {@link QuantizationState}.
-     *
+     * Transform vector with ADC. ADC allows us to score full-precision query vectors against binary document vectors.
+     * The transformation formula is:
+     * q_d = (q_d - x_d) / (y_d - x_d) where x_d is the mean of all document entries quantized to 0 (the below threshold mean)
+     * and y_d is the mean of all document entries quantized to 1 (the above threshold mean).
+     * @param vector array of floats, modified in-place.
      * @param quantizationState The {@link QuantizationState} containing the state of the trained quantizer.
-     * @param vector The vector to be transformed.
-     */
-
-    /**
-     * Applies ADC transformation to the given vector using the specified {@link QuantizationState}.
-     *
-     * @param quantizationState The {@link QuantizationState} containing the state of the trained quantizer.
-     * @param vector The vector to be transformed.
+     * @param spaceType spaceType (l2 or innerproduct). Used to identify whether an additional correction term should be applied.
      */
     public void transformWithADC(final QuantizationState quantizationState, T vector, final SpaceType spaceType) {
         Quantizer<T, R> quantizer = QuantizerFactory.getQuantizer(quantizationState.getQuantizationParams());
@@ -118,6 +114,10 @@ public final class QuantizationService<T, R> {
 
     /**
      * Retrieves quantization parameters from the FieldInfo.
+     * @param fieldInfo The {@link FieldInfo} object containing metadata about the field for which the quantization parameters
+     *                  are being determined.
+     * @param luceneVersion {@link Version} lucene version present in the segment, used for BWC.
+     * @return The {@link QuantizationParams} corresponding to the provided field information.
      */
     public QuantizationParams getQuantizationParams(final FieldInfo fieldInfo, Version luceneVersion) {
         QuantizationConfig quantizationConfig = extractQuantizationConfig(fieldInfo, luceneVersion);

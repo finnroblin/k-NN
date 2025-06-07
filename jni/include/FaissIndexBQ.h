@@ -43,23 +43,6 @@ namespace knn_jni {
                 correction_amount = 0.0f;
             }
 
-            float distance_to_code_l2_unbatched(const uint8_t* code) {
-                // L2 distance
-               float score = 0.0f;
-               for (int i = 0; i < dimension; i++) {
-                   uint8_t code_block = code[(i / 8)];
-                   int bit_offset = 7 - (i % 8);
-                   int bit_mask = 1 << bit_offset;
-                   int code_masked = (code_block & bit_mask);
-                   int code_translated = code_masked >> bit_offset;
-
-                   float dim_score = (code_translated - query[i]) * (code_translated - query[i]);
-
-                   score += dim_score;
-               }
-               return score;       
-               }
-
             float distance_to_code_batched(const uint8_t * code) {
                 float dist = 0.0f;
                 for (int i = 0 ; i < dimension / 8; ++i) {
@@ -75,16 +58,12 @@ namespace knn_jni {
             };
 
             void compute_cord_scores() {
-                // make sure we've already set the query
-                assert(this->query != nullptr);
                 this->coord_scores = std::vector<float>(this->dimension, 0.0f);
                 if (this->metric_type == faiss::METRIC_L2) {
                     compute_cord_scores_l2();
                 } else if (this->metric_type == faiss::METRIC_INNER_PRODUCT) {
                     compute_cord_scores_inner_product();
-                }
-                
-                else {
+                } else {
                     throw std::runtime_error(
                         ("ADC distance computer called with unsupported metric: " + std::to_string(this->metric_type))
                     );
@@ -131,7 +110,8 @@ namespace knn_jni {
             }
 
             void create_batched_lookup_table() {
-                const unsigned int num_batches =this->dimension/BATCH_SIZE; // how many batches per vector
+                // number of batches per vector
+                const unsigned int num_batches =this->dimension/BATCH_SIZE;
                 this->lookup_table = std::vector<std::vector<float>>(num_batches,
                     std::vector<float>(NUM_POSSIBILITIES_PER_BATCH, 0.0f)
                 );
@@ -144,8 +124,6 @@ namespace knn_jni {
             // FlatCodesDistanceComputer::symmetric_dis is used in faiss only to calculate distance when building graph.
             virtual float symmetric_dis(faiss::idx_t i, faiss::idx_t j) override {
                 throw std::runtime_error("ADC computer is only implemented for search time, not indexing.");
-
-                return faiss::hamming<1, float>(&this->codes[i], &this->codes[j]);
             };
         };
 
@@ -166,10 +144,10 @@ namespace knn_jni {
 
             /** Return overridden FlatCodesDistanceComputer with ADC distance_to_code method */
             faiss::FlatCodesDistanceComputer* get_FlatCodesDistanceComputer() const override {
-                if (this->d % 8 != 0) throw std::runtime_error("ADC distance computer only supports d divisible by 8");
+                // note that dimension must be a multiple of 8. This is already enforced in the faiss wrapper.
+                // see here: https://github.com/opensearch-project/k-NN/blob/52dc64b6311a71e174a6ba7a6c6e904f2e2d378f/jni/src/faiss_wrapper.cpp#L306
                 return new knn_jni::faiss_wrapper::ADCFlatCodesDistanceComputer1Bit(this->codes_ptr->data(), this->d/8, this->d,
             this->metric_type);
-                // TODO make the code_size calculation better, including rounding up via (d + 7) / 8
             };
         };
     }

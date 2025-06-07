@@ -79,7 +79,7 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
         return QuantizerHelper.calculateQuantizationState(
             trainingRequest,
             sampledDocIds,
-            new ScalarQuantizationParams(ScalarQuantizationType.ONE_BIT)
+            ScalarQuantizationParams.builder().sqType(ScalarQuantizationType.ONE_BIT).build()
         );
     }
 
@@ -111,6 +111,15 @@ public class OneBitScalarQuantizer implements Quantizer<float[], byte[]> {
         BitPacker.quantizeAndPackBits(vector, thresholds, output.getQuantizedVector());
     }
 
+    /**
+     * Transform vector with ADC. ADC allows us to score full-precision query vectors against binary document vectors.
+     * The transformation formula is:
+     * q_d = (q_d - x_d) / (y_d - x_d) where x_d is the mean of all document entries quantized to 0 (the below threshold mean)
+     * and y_d is the mean of all document entries quantized to 1 (the above threshold mean).
+     * @param vector array of floats, modified in-place.
+     * @param state The {@link QuantizationState} containing the state of the trained quantizer.
+     * @param spaceType spaceType (l2 or innerproduct). Used to identify whether an additional correction term should be applied.
+     */
     @Override
     public void transformWithADC(float[] vector, final QuantizationState state, final SpaceType spaceType) {
         validateState(state);

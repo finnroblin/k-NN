@@ -39,11 +39,14 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+import static org.opensearch.knn.common.KNNConstants.ADC_ENABLED_FAISS_INDEX_INTERNAL_PARAMETER;
 import static org.opensearch.knn.common.KNNConstants.BYTES_PER_KILOBYTES;
 import static org.opensearch.knn.common.KNNConstants.ENCODER_FLAT;
 import static org.opensearch.knn.common.KNNConstants.EXPAND_NESTED;
 import static org.opensearch.knn.common.KNNConstants.HNSW_ALGO_EF_SEARCH;
+import static org.opensearch.knn.common.KNNConstants.QUANTIZATION_LEVEL_FAISS_INDEX_LOAD_PARAMETER;
 import static org.opensearch.knn.common.KNNConstants.SPACE_TYPE;
+import static org.opensearch.knn.common.KNNConstants.SPACE_TYPE_FAISS_INDEX_LOAD_PARAMETER;
 import static org.opensearch.knn.common.KNNConstants.VECTOR_DATA_TYPE_FIELD;
 import static org.opensearch.knn.index.query.parser.RescoreParser.RESCORE_PARAMETER;
 
@@ -284,11 +287,11 @@ public class IndexUtil {
         loadParameters.put(VECTOR_DATA_TYPE_FIELD, vectorDataType.getValue());
 
         if (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)) {
-            loadParameters.put("adc_enabled", true);
-            String quantization_level = segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier();
+            loadParameters.put(ADC_ENABLED_FAISS_INDEX_INTERNAL_PARAMETER, true);
+            String quantizationLevel = segmentLevelQuantizationInfo.getQuantizationParams().getTypeIdentifier();
 
-            loadParameters.put("quantization_level", quantization_level);
-            loadParameters.put("space_type", spaceType.getValue());
+            loadParameters.put(QUANTIZATION_LEVEL_FAISS_INDEX_LOAD_PARAMETER, quantizationLevel);
+            loadParameters.put(SPACE_TYPE_FAISS_INDEX_LOAD_PARAMETER, spaceType.getValue());
         }
 
         return Collections.unmodifiableMap(loadParameters);
@@ -338,8 +341,15 @@ public class IndexUtil {
             && parameters.get(VECTOR_DATA_TYPE_FIELD).toString().equals(VectorDataType.BINARY.getValue());
     }
 
+    /**
+     * Return whether Asymmetric Distance Computation (ADC) is enabled for this index.
+     * @param knnEngine knn engine associated with an index
+     * @param parameters parameters associated with an index
+     * @return true if ADC is enabled
+     */
     public static boolean isADCEnabled(KNNEngine knnEngine, Map<String, Object> parameters) {
-        return KNNEngine.FAISS == knnEngine && parameters.get("adc_enabled") != null && (boolean) parameters.get("adc_enabled");
+        return KNNEngine.FAISS == knnEngine && parameters != null &&
+                parameters.get(ADC_ENABLED_FAISS_INDEX_INTERNAL_PARAMETER) != null && (boolean) parameters.get(ADC_ENABLED_FAISS_INDEX_INTERNAL_PARAMETER);
     }
 
     /**

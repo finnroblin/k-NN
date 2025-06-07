@@ -88,6 +88,10 @@ public class KNNConstants {
                                                                                     // tests and benchmark results of the random gaussian
                                                                                     // rotation
     public static final double ADC_CORRECTION_FACTOR = 2.0;
+    public static final String ADC_ENABLED_FAISS_INDEX_INTERNAL_PARAMETER = "adc_enabled";
+    public static final String QUANTIZATION_LEVEL_FAISS_INDEX_LOAD_PARAMETER = "quantization_level";
+    public static final String SPACE_TYPE_FAISS_INDEX_LOAD_PARAMETER = "space_type";
+
 
     // Lucene specific constants
     public static final String LUCENE_NAME = "lucene";
