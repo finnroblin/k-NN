@@ -44,31 +44,10 @@ public class ScalarQuantizationParams implements QuantizationParams {
     public static String generateTypeIdentifier(ScalarQuantizationType sqType) {
         return generateIdentifier(sqType.getId());
     }
-//
-//    public ScalarQuantizationParams(ScalarQuantizationType quantizationType) {
-//        sqType = quantizationType;
-//        this.enableRandomRotation = QFrameBitEncoder.DEFAULT_ENABLE_RANDOM_ROTATION;
-//        this.enableADC = QFrameBitEncoder.DEFAULT_ENABLE_ADC;
-//    }
-//
-//    public ScalarQuantizationParams(ScalarQuantizationType quantizationType, boolean enableRandomRotation) {
-//        sqType = quantizationType;
-//        this.enableRandomRotation = enableRandomRotation;
-//        this.enableADC = QFrameBitEncoder.DEFAULT_ENABLE_ADC;
-//    }
-//
-//    public ScalarQuantizationParams(ScalarQuantizationType quantizationType, boolean enableRandomRotation, boolean enableADC) {
-//        sqType = quantizationType;
-//        this.enableRandomRotation = enableRandomRotation;
-//        this.enableADC = enableADC;
-//    }
-//
-//    // no-argument constructor for deserialization
-//    public ScalarQuantizationParams() {
-//        sqType = null;
-//        this.enableRandomRotation = QFrameBitEncoder.DEFAULT_ENABLE_RANDOM_ROTATION;
-//        this.enableADC = QFrameBitEncoder.DEFAULT_ENABLE_ADC;
-//    }
+
+    public ScalarQuantizationParams(ScalarQuantizationType quantizationType) {
+        this(quantizationType, QFrameBitEncoder.DEFAULT_ENABLE_RANDOM_ROTATION, QFrameBitEncoder.DEFAULT_ENABLE_ADC);
+    }
 
     /**
      * Provides a unique type identifier for the ScalarQuantizationParams, combining the SQ type.

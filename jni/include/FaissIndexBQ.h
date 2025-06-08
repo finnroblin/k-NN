@@ -37,9 +37,6 @@ namespace knn_jni {
             ADCFlatCodesDistanceComputer1Bit(const uint8_t* codes, size_t code_size, int d,
                 faiss::MetricType metric_type = faiss::METRIC_L2) 
                 : FlatCodesDistanceComputer(codes, code_size), dimension(d), query(nullptr), metric_type(metric_type) {
-                this->codes = codes;
-                this->code_size = code_size;
-                this->dimension = d;
                 correction_amount = 0.0f;
             }
 
@@ -105,7 +102,6 @@ namespace knn_jni {
                         // DP to build batch values one-by-one using previously computed values.
                         batch[bit_masked | suffix] = batch[suffix] + bit_value;
                     }
-
                 }
             }
 
@@ -144,8 +140,8 @@ namespace knn_jni {
 
             /** Return overridden FlatCodesDistanceComputer with ADC distance_to_code method */
             faiss::FlatCodesDistanceComputer* get_FlatCodesDistanceComputer() const override {
-                // note that dimension must be a multiple of 8. This is already enforced in the faiss wrapper.
-                // see here: https://github.com/opensearch-project/k-NN/blob/52dc64b6311a71e174a6ba7a6c6e904f2e2d378f/jni/src/faiss_wrapper.cpp#L306
+                // dimension must be a multiple of 8.
+                if (this->d % 8 != 0) throw std::runtime_error("ADC distance computer only supports d divisible by 8");
                 return new knn_jni::faiss_wrapper::ADCFlatCodesDistanceComputer1Bit(this->codes_ptr->data(), this->d/8, this->d,
             this->metric_type);
             };

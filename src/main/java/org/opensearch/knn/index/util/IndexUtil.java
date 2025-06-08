@@ -348,8 +348,10 @@ public class IndexUtil {
      * @return true if ADC is enabled
      */
     public static boolean isADCEnabled(KNNEngine knnEngine, Map<String, Object> parameters) {
-        return KNNEngine.FAISS == knnEngine && parameters != null &&
-                parameters.get(ADC_ENABLED_FAISS_INDEX_INTERNAL_PARAMETER) != null && (boolean) parameters.get(ADC_ENABLED_FAISS_INDEX_INTERNAL_PARAMETER);
+        return KNNEngine.FAISS == knnEngine
+            && parameters != null
+            && parameters.get(ADC_ENABLED_FAISS_INDEX_INTERNAL_PARAMETER) != null
+            && (boolean) parameters.get(ADC_ENABLED_FAISS_INDEX_INTERNAL_PARAMETER);
     }
 
     /**

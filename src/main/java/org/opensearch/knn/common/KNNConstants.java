@@ -92,7 +92,6 @@ public class KNNConstants {
     public static final String QUANTIZATION_LEVEL_FAISS_INDEX_LOAD_PARAMETER = "quantization_level";
     public static final String SPACE_TYPE_FAISS_INDEX_LOAD_PARAMETER = "space_type";
 
-
     // Lucene specific constants
     public static final String LUCENE_NAME = "lucene";
     public static final String LUCENE_SQ_CONFIDENCE_INTERVAL = "confidence_interval";

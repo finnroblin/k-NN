@@ -108,7 +108,6 @@ public final class QuantizationService<T, R> {
      */
     public void transformWithADC(final QuantizationState quantizationState, T vector, final SpaceType spaceType) {
         Quantizer<T, R> quantizer = QuantizerFactory.getQuantizer(quantizationState.getQuantizationParams());
-
         quantizer.transformWithADC(vector, quantizationState, spaceType);
     }
 
@@ -137,6 +136,7 @@ public final class QuantizationService<T, R> {
      *
      * @param fieldInfo The {@link FieldInfo} object containing metadata about the field for which the vector data type
      *                  is being determined.
+     * @param luceneVersion {@link Version} lucene version present in the segment, used for BWC.
      * @return The {@link VectorDataType} to be used during the vector transfer process
      */
     public VectorDataType getVectorDataTypeForTransfer(final FieldInfo fieldInfo, Version luceneVersion) {
