@@ -6,6 +6,7 @@
 package org.opensearch.knn.index.mapper;
 
 import lombok.Getter;
+import lombok.extern.log4j.Log4j2;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.search.FieldExistsQuery;
@@ -40,6 +41,7 @@ import static org.opensearch.knn.index.mapper.KNNVectorFieldMapperUtil.deseriali
 /**
  * A KNNVector field type to represent the vector field in Opensearch
  */
+@Log4j2
 @Getter
 public class KNNVectorFieldType extends MappedFieldType {
     private static final Logger logger = LogManager.getLogger(KNNVectorFieldType.class);
@@ -141,21 +143,37 @@ public class KNNVectorFieldType extends MappedFieldType {
      * 3. Falls back to model ID if KNN method context is not available
      * 4. Throws exception if neither configuration is present
      */
-    public void transformQueryVector(float[] vector) {
+    public void transformQueryVector(float[] vector, float[][] maybeMatrix) {
         if (VectorDataType.FLOAT != vectorDataType) {
             return;
         }
+        // don't pass in matrix; query builder path should be avoided. All mapping related logic within the field type.
+
         final Optional<KNNMethodContext> knnMethodContext = knnMappingConfig.getKnnMethodContext();
         if (knnMethodContext.isPresent()) {
-            KNNMethodContext context = knnMethodContext.get();
-            VectorTransformerFactory.getVectorTransformer(context.getKnnEngine(), context.getSpaceType()).transform(vector);
+//            KNNMethodContext context = knnMethodContext.get();
+
+            knnMappingConfig.getKnnLibraryIndexingContext().getVectorTransformer().transform(vector);
+//            VectorTransformerFactory.getVectorTransformer(
+//                context.getKnnEngine(),
+//                context.getSpaceType(),
+//                knnMappingConfig.getQuantizationConfig().isEnableRandomRotation(),
+//                knnMappingConfig.getDimension(),
+//                    maybeMatrix
+//            ).transform(vector);
             return;
         }
         final Optional<String> modelId = knnMappingConfig.getModelId();
         if (modelId.isPresent()) {
+            log.info("querying with model");
             ModelDao modelDao = ModelDao.OpenSearchKNNModelDao.getInstance();
             final ModelMetadata metadata = modelDao.getMetadata(modelId.get());
-            VectorTransformerFactory.getVectorTransformer(metadata.getKnnEngine(), metadata.getSpaceType()).transform(vector);
+            VectorTransformerFactory.getVectorTransformer(
+                metadata.getKnnEngine(),
+                metadata.getSpaceType(),
+                knnMappingConfig.getQuantizationConfig().isEnableRandomRotation(),
+                knnMappingConfig.getDimension(), null
+            ).transform(vector);
             return;
         }
         throw new IllegalStateException("Either KNN method context or Model Id should be configured");
