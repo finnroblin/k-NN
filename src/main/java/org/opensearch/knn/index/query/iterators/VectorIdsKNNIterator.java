@@ -12,6 +12,11 @@ import org.opensearch.knn.index.query.SegmentLevelQuantizationInfo;
 import org.opensearch.knn.index.query.SegmentLevelQuantizationUtil;
 import org.opensearch.knn.index.vectorvalues.KNNFloatVectorValues;
 
+import lombok.extern.log4j.Log4j2;
+import org.opensearch.knn.plugin.script.KNNScoringUtil;
+import org.opensearch.knn.quantization.models.quantizationParams.QuantizationParams;
+import org.opensearch.knn.quantization.models.quantizationParams.ScalarQuantizationParams;
+
 import java.io.IOException;
 
 /**
@@ -20,6 +25,7 @@ import java.io.IOException;
  *
  * The class is used in KNNWeight to score all docs, but, it iterates over filterIdsArray if filter is provided
  */
+@Log4j2
 public class VectorIdsKNNIterator implements KNNIterator {
     protected final DocIdSetIterator filterIdsIterator;
     protected final float[] queryVector;
@@ -88,21 +94,15 @@ public class VectorIdsKNNIterator implements KNNIterator {
 
     protected float computeScore() throws IOException {
         final float[] vector = knnFloatVectorValues.getVector();
-        if (segmentLevelQuantizationInfo != null) {
-            if (SegmentLevelQuantizationUtil.isAdcEnabled(segmentLevelQuantizationInfo)) {
-                double distance = 0.0f;
-                for (int i = 0; i < vector.length; i++) {
-                    // TODO: This only makes sense for l2
-                    distance += Math.pow(vector[i] - queryVector[i], 2);
-                }
-                return (float) distance;
-            }
+        if (segmentLevelQuantizationInfo != null && quantizedQueryVector != null) {
             byte[] quantizedVector = SegmentLevelQuantizationUtil.quantizeVector(vector, segmentLevelQuantizationInfo);
             return SpaceType.HAMMING.getKnnVectorSimilarityFunction().compare(quantizedQueryVector, quantizedVector);
+        } else if (segmentLevelQuantizationInfo != null && shouldScoreWithADC(segmentLevelQuantizationInfo.getQuantizationParams())) {
+            byte[] quantizedVector = SegmentLevelQuantizationUtil.quantizeVector(vector, segmentLevelQuantizationInfo);
+            return scoreWithADC(segmentLevelQuantizationInfo, queryVector, quantizedVector, spaceType);
+        } else {
+            return spaceType.getKnnVectorSimilarityFunction().compare(queryVector, vector);
         }
-        // Calculates a similarity score between the two vectors with a specified function. Higher similarity
-        // scores correspond to closer vectors.
-        return spaceType.getKnnVectorSimilarityFunction().compare(queryVector, vector);
     }
 
     protected int getNextDocId() throws IOException {
@@ -115,5 +115,28 @@ public class VectorIdsKNNIterator implements KNNIterator {
             knnFloatVectorValues.advance(nextDocID);
         }
         return nextDocID;
+    }
+
+    // protected for testing
+    protected boolean shouldScoreWithADC(QuantizationParams quantizationParams) {
+        if (quantizationParams instanceof ScalarQuantizationParams scalarQuantizationParams) {
+            return scalarQuantizationParams.isEnableADC();
+        }
+        return false;
+    }
+
+    // protected for testing
+    protected float scoreWithADC(
+        SegmentLevelQuantizationInfo segmentLevelQuantizationInfo,
+        float[] queryVector,
+        byte[] documentVector,
+        SpaceType spaceType
+    ) {
+        if (spaceType.equals(SpaceType.L2)) {
+            return SpaceType.L2.scoreTranslation(KNNScoringUtil.l2SquaredADC(queryVector, documentVector));
+        } else if (spaceType.equals(SpaceType.INNER_PRODUCT) || spaceType.equals(SpaceType.COSINESIMIL)) {
+            return SpaceType.INNER_PRODUCT.scoreTranslation((-1 * KNNScoringUtil.innerProductADC(queryVector, documentVector)));
+        }
+        throw new UnsupportedOperationException("Space type " + spaceType.getValue() + " is not supported for ADC");
     }
 }
