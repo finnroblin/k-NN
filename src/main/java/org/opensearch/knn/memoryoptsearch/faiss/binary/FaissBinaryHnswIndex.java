@@ -61,9 +61,9 @@ public class FaissBinaryHnswIndex extends FaissBinaryIndex implements FaissHNSWP
 
     @Override
     public FloatVectorValues getFloatValues(IndexInput indexInput) throws IOException {
-        throw new UnsupportedOperationException(FaissBinaryHnswIndex.class.getSimpleName() + " doees not support FloatVectorValues.");
+        throw new UnsupportedOperationException(FaissBinaryHnswIndex.class.getSimpleName() + " does not support FloatVectorValues.");
     }
-
+    // TODO: for ADC need to call into getByteValues if there's a transformer vector, or if there's the proper scorer.
     @Override
     public ByteVectorValues getByteValues(IndexInput indexInput) throws IOException {
         return storage.getByteValues(indexInput);

@@ -105,7 +105,7 @@ public class MemoryOptimizedKNNWeight extends KNNWeight {
                             + "]"
                     );
                 }
-
+// also could consider pasing in here fro ADC.
                 if (knnQuery.getVectorDataType() == VectorDataType.BINARY || knnQuery.getVectorDataType() == VectorDataType.BYTE) {
                     // when data_type is set byte or binary
                     return queryIndex(
@@ -120,6 +120,21 @@ public class MemoryOptimizedKNNWeight extends KNNWeight {
                     );
                 }
 
+                if (adcTransformedVector != null) {
+                    // ADC case
+                    return queryIndex(
+                        adcTransformedVector,
+                        cardinality,
+                        cardinality + 1,
+                        context,
+                        filterIdsBitSet,
+                        reader,
+                        knnEngine,
+                        spaceType
+                    );
+                }
+
+                // HERE we might need to pass in with adc... the adcTransformedVector
                 // fallback to float
                 return queryIndex(
                     knnQuery.getQueryVector(),
@@ -158,7 +173,8 @@ public class MemoryOptimizedKNNWeight extends KNNWeight {
         final BitSet filterIdsBitSet,
         final SegmentReader reader,
         final KNNEngine knnEngine,
-        final SpaceType spaceType
+        final SpaceType spaceType //         final boolean isADC
+        // also pass in transformed vector.
     ) throws IOException {
         assert (targetVector instanceof float[] || targetVector instanceof byte[]);
 
@@ -174,6 +190,7 @@ public class MemoryOptimizedKNNWeight extends KNNWeight {
         final KnnCollector knnCollector = knnCollectorManager.newCollector(visitedLimit, KnnSearchStrategy.Hnsw.DEFAULT, context);
         final BitSet bitSet = cardinality == 0 ? null : filterIdsBitSet;
 
+        // need to figure out where to pass in the. query vector.
         // Start searching index
         if (targetVector instanceof float[] floatTargetVector) {
             reader.getVectorReader().search(knnQuery.getField(), floatTargetVector, knnCollector, bitSet);
@@ -190,4 +207,6 @@ public class MemoryOptimizedKNNWeight extends KNNWeight {
         addExplainIfRequired(topDocs, knnEngine, spaceType);
         return topDocs;
     }
+
+    // could also make a method queryIndexWithADC maybe...
 }

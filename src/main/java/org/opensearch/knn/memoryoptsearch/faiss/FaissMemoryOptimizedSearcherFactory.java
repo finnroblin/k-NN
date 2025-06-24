@@ -22,16 +22,37 @@ import java.io.IOException;
  * this searcher will access vectors randomly.
  */
 public class FaissMemoryOptimizedSearcherFactory implements VectorSearcherFactory {
+//    @Override
+//    public VectorSearcher createVectorSearcher(final Directory directory, final String fileName) throws IOException {
+//        final IndexInput indexInput = directory.openInput(
+//            fileName,
+//            new IOContext(IOContext.Context.DEFAULT, null, null, ReadAdvice.RANDOM)
+//        );
+//
+//        // TODO: modify here with ADC logic.
+//        try {
+//            // Try load it. Not all FAISS index types are currently supported at the moment.
+//            return new FaissMemoryOptimizedSearcher(indexInput);
+//        } catch (UnsupportedFaissIndexException e) {
+//            // Clean up input stream.
+//            try {
+//                IOUtils.close(indexInput);
+//            } catch (IOException ioException) {}
+//            return null;
+//        }
+//    }
+
     @Override
-    public VectorSearcher createVectorSearcher(final Directory directory, final String fileName) throws IOException {
+    public VectorSearcher createVectorSearcher(final Directory directory, final String fileName, boolean isAdc) throws IOException {
         final IndexInput indexInput = directory.openInput(
-            fileName,
-            new IOContext(IOContext.Context.DEFAULT, null, null, ReadAdvice.RANDOM)
+                fileName,
+                new IOContext(IOContext.Context.DEFAULT, null, null, ReadAdvice.RANDOM)
         );
 
+        // TODO: modify here with ADC logic.
         try {
             // Try load it. Not all FAISS index types are currently supported at the moment.
-            return new FaissMemoryOptimizedSearcher(indexInput);
+            return new FaissMemoryOptimizedSearcher(indexInput, isAdc);
         } catch (UnsupportedFaissIndexException e) {
             // Clean up input stream.
             try {
