@@ -137,6 +137,7 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
     @Override
     public void search(String field, float[] target, KnnCollector knnCollector, Bits acceptDocs) throws IOException {
         // TODO: This is a temporary hack where we are using KNNCollector to initialize the quantization state.
+        // NOTE: might also need to do this with the adc...
         if (knnCollector instanceof QuantizationConfigKNNCollector) {
             String cacheKey = quantizationStateCacheKeyPerField.get(field);
             FieldInfo fieldInfo = segmentReadState.fieldInfos.fieldInfo(field);

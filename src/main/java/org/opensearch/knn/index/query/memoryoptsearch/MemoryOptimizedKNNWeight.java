@@ -120,6 +120,7 @@ public class MemoryOptimizedKNNWeight extends KNNWeight {
                     );
                 }
 
+                // HERE we might need to pass in with adc... the adcTransformedVector
                 // fallback to float
                 return queryIndex(
                     knnQuery.getQueryVector(),
