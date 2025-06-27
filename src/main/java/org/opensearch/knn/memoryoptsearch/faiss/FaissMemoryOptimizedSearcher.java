@@ -59,6 +59,15 @@ public class FaissMemoryOptimizedSearcher implements VectorSearcher {
 
     @Override
     public void search(float[] target, KnnCollector knnCollector, Bits acceptDocs) throws IOException {
+        // TODO: below fails on the getFloatValues call... we need to pass to a different function based on if adc is enabled...
+
+        // probably a way to hack this together.
+        // maybe we want to query a binary index?
+//        knnCollector doesn't have what we want.
+//        search(
+// needs to take in the target based on the
+//        )
+//        faissIndex.
         search(
             VectorEncoding.FLOAT32,
             () -> flatVectorsScorer.getRandomVectorScorer(
@@ -99,8 +108,9 @@ public class FaissMemoryOptimizedSearcher implements VectorSearcher {
         if (faissIndex.getTotalNumberOfVectors() == 0 || knnCollector.k() == 0) {
             return;
         }
-
-        if (faissIndex.getVectorEncoding() != vectorEncoding) {
+// TODO: in ADC it's okay if faissIndex.getVectorEncoding() is Byte but vectorEncoding is float
+        if (false) {
+//        if (faissIndex.getVectorEncoding() != vectorEncoding ) {
             throw new IllegalArgumentException(
                 "Search for vector encoding ["
                     + vectorEncoding
