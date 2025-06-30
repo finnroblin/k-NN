@@ -18,6 +18,7 @@ import org.apache.lucene.util.hnsw.HnswGraphSearcher;
 import org.apache.lucene.util.hnsw.OrdinalTranslatedKnnCollector;
 import org.apache.lucene.util.hnsw.RandomVectorScorer;
 import org.opensearch.knn.index.KNNVectorSimilarityFunction;
+import org.opensearch.knn.index.SpaceType;
 import org.opensearch.knn.memoryoptsearch.VectorSearcher;
 import org.opensearch.knn.memoryoptsearch.faiss.cagra.FaissCagraHNSW;
 
@@ -34,7 +35,10 @@ public class FaissMemoryOptimizedSearcher implements VectorSearcher {
     private final FaissHNSW hnsw;
     private final VectorSimilarityFunction vectorSimilarityFunction;
     private final long fileSize;
+    private boolean isAdc;
+    private final FlatVectorsScorerProvider.ADCFlatVectorsScorer adcScorer;
 
+    // could add extra isAdc constructor maybe? this is a mess though...
     public FaissMemoryOptimizedSearcher(final IndexInput indexInput) throws IOException {
         this.indexInput = indexInput;
         this.fileSize = indexInput.length();
@@ -47,9 +51,36 @@ public class FaissMemoryOptimizedSearcher implements VectorSearcher {
             vectorSimilarityFunction = null;
         }
         this.hnsw = extractFaissHnsw(faissIndex);
+        this.isAdc = false;
+        this.adcScorer = null;
     }
 
-    private static FaissHNSW extractFaissHnsw(final FaissIndex faissIndex) {
+    public FaissMemoryOptimizedSearcher(final IndexInput indexInput, boolean isAdc) throws IOException {
+//        this(indexInput);
+        this.indexInput = indexInput;
+        this.fileSize = indexInput.length();
+        this.faissIndex = FaissIndex.load(indexInput);
+        final KNNVectorSimilarityFunction knnVectorSimilarityFunction = faissIndex.getVectorSimilarityFunction();
+        this.flatVectorsScorer = null;
+        this.adcScorer = FlatVectorsScorerProvider.getAdcFlatVectorScorer(knnVectorSimilarityFunction);
+        if (knnVectorSimilarityFunction != KNNVectorSimilarityFunction.HAMMING) {
+            vectorSimilarityFunction = knnVectorSimilarityFunction.getVectorSimilarityFunction();
+        } else {
+            vectorSimilarityFunction = null;
+        }
+        this.hnsw = extractFaissHnsw(faissIndex);
+        // TODO: it's really ugly to just defer to different constructors with the adc method/just by passing in a new boolean...
+        // I think a lot of work might be needed to make this clean, but it'll be okay for a first draft.
+        this.isAdc = true;
+//        this.flatVectorsScorer = FlatVectorsScorerProvider.getAdcFlatVectorScorer(v);
+        // start as a
+//        this.adcScorer = () -> FlatVectorsScorerProvider.ADCFlatVectorsScorer;
+
+
+    }
+
+
+        private static FaissHNSW extractFaissHnsw(final FaissIndex faissIndex) {
         if (faissIndex instanceof FaissIdMapIndex idMapIndex) {
             return idMapIndex.getFaissHnsw();
         }
@@ -57,10 +88,25 @@ public class FaissMemoryOptimizedSearcher implements VectorSearcher {
         throw new IllegalArgumentException("Faiss index [" + faissIndex.getIndexType() + "] does not have HNSW as an index.");
     }
 
+    public void searchWithAdc(float[] target, KnnCollector knnCollector, Bits acceptDocs, SpaceType spaceType) throws IOException {
+        // can I maybe just inject the flatVectorsScorer here? let's do that as a first draft.
+        // somehow need to override the flatVectorsScorer and grab it...
+        search(VectorEncoding.FLOAT32,
+                () -> adcScorer.getRandomVectorScorerForAdc(
+                        vectorSimilarityFunction,
+                        faissIndex.getByteValues(getSlicedIndexInput()),
+                        target,
+                        spaceType
+                ),
+                knnCollector,
+                acceptDocs
+        );
+    }
+
     @Override
     public void search(float[] target, KnnCollector knnCollector, Bits acceptDocs) throws IOException {
         // TODO: below fails on the getFloatValues call... we need to pass to a different function based on if adc is enabled...
-
+        // maybe a searchWithADC command like search(float32, geTRandomVectorScorerr on faissIndex.getByteValues(....
         // probably a way to hack this together.
         // maybe we want to query a binary index?
 //        knnCollector doesn't have what we want.
@@ -69,15 +115,26 @@ public class FaissMemoryOptimizedSearcher implements VectorSearcher {
 //        )
 //        faissIndex.
         search(
-            VectorEncoding.FLOAT32,
-            () -> flatVectorsScorer.getRandomVectorScorer(
-                vectorSimilarityFunction,
-                faissIndex.getFloatValues(getSlicedIndexInput()),
-                target
-            ),
-            knnCollector,
-            acceptDocs
+                VectorEncoding.FLOAT32,
+                () -> flatVectorsScorer.getRandomVectorScorer(
+                        vectorSimilarityFunction,
+                        faissIndex.getByteValues(getSlicedIndexInput()),
+                        target
+                ),
+                knnCollector,
+                acceptDocs
         );
+//        search(
+//            VectorEncoding.FLOAT32,
+//            () -> flatVectorsScorer.getRandomVectorScorer(
+//                vectorSimilarityFunction,
+//                faissIndex.getFloatValues(getSlicedIndexInput()),
+//                target
+//            ), // scorerSupplier is here. We need to essentially load the binary index, and then use a custom
+//                // scorer supplier that supports it. But I don't know how to get the index from the knnColector.
+//            knnCollector,
+//            acceptDocs
+//        );
     }
 
     @Override
@@ -99,11 +156,42 @@ public class FaissMemoryOptimizedSearcher implements VectorSearcher {
         indexInput.close();
     }
 
+    // only difference is with the scorer, so that's the only one to do.
+    private void searchWithADC(
+            final VectorEncoding vectorEncoding,
+            final IOSupplier<RandomVectorScorer> scorerSupplier,
+            final KnnCollector knnCollector,
+            final Bits acceptDocs // here need to see if it can be modified in both usages.
+    ) throws IOException {
+        // Set up required components for vector search
+        final RandomVectorScorer scorer = scorerSupplier.get();
+        final KnnCollector collector = createKnnCollector(knnCollector, scorer);
+        final Bits acceptedOrds = scorer.getAcceptOrds(acceptDocs);
+
+        if (knnCollector.k() < scorer.maxOrd()) {
+            // Do ANN search with Lucene's HNSW graph searcher.
+            HnswGraphSearcher.search(scorer, collector, new FaissHnswGraph(hnsw, getSlicedIndexInput()), acceptedOrds);
+        } else {
+            // If k is larger than the number of vectors, we can just iterate over all vectors
+            // and collect them.
+            for (int i = 0; i < scorer.maxOrd(); i++) {
+                if (acceptedOrds == null || acceptedOrds.get(i)) {
+                    if (!knnCollector.earlyTerminated()) {
+                        knnCollector.incVisitedCount(1);
+                        knnCollector.collect(scorer.ordToDoc(i), scorer.score(i));
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }  // End if
+    }
+
     private void search(
         final VectorEncoding vectorEncoding,
         final IOSupplier<RandomVectorScorer> scorerSupplier,
         final KnnCollector knnCollector,
-        final Bits acceptDocs
+        final Bits acceptDocs // here need to see if it can be modified in both usages.
     ) throws IOException {
         if (faissIndex.getTotalNumberOfVectors() == 0 || knnCollector.k() == 0) {
             return;

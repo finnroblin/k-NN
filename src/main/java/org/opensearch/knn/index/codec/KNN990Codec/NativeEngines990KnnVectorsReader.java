@@ -29,6 +29,8 @@ import org.apache.lucene.util.IOSupplier;
 import org.apache.lucene.util.IOUtils;
 import org.opensearch.common.UUIDs;
 import org.opensearch.knn.common.FieldInfoExtractor;
+import org.opensearch.knn.common.KNNConstants;
+import org.opensearch.knn.index.SpaceType;
 import org.opensearch.knn.index.codec.util.KNNCodecUtil;
 import org.opensearch.knn.index.codec.util.NativeMemoryCacheKeyHelper;
 import org.opensearch.knn.index.engine.KNNEngine;
@@ -36,6 +38,7 @@ import org.opensearch.knn.index.memory.NativeMemoryCacheManager;
 import org.opensearch.knn.index.quantizationservice.QuantizationService;
 import org.opensearch.knn.memoryoptsearch.VectorSearcher;
 import org.opensearch.knn.memoryoptsearch.VectorSearcherFactory;
+import org.opensearch.knn.memoryoptsearch.faiss.FaissMemoryOptimizedSearcher;
 import org.opensearch.knn.quantization.models.quantizationState.QuantizationState;
 import org.opensearch.knn.quantization.models.quantizationState.QuantizationStateCacheManager;
 import org.opensearch.knn.quantization.models.quantizationState.QuantizationStateReadConfig;
@@ -153,8 +156,8 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
             ((QuantizationConfigKNNCollector) knnCollector).setQuantizationState(quantizationState);
             return;
         }
-
-        if (trySearchWithMemoryOptimizedSearch(field, target, knnCollector, acceptDocs, true)) {
+        SpaceType spaceType = SpaceType.getSpace(segmentReadState.fieldInfos.fieldInfo(field).getAttribute(KNNConstants.SPACE_TYPE));
+        if (trySearchWithMemoryOptimizedSearch(field, target, knnCollector, acceptDocs, true, true, spaceType)) {
             return;
         }
 
@@ -188,7 +191,7 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
      */
     @Override
     public void search(String field, byte[] target, KnnCollector knnCollector, Bits acceptDocs) throws IOException {
-        if (trySearchWithMemoryOptimizedSearch(field, target, knnCollector, acceptDocs, false)) {
+        if (trySearchWithMemoryOptimizedSearch(field, target, knnCollector, acceptDocs, false, false, null)) {
             return;
         }
 
@@ -241,12 +244,16 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
         final Object target,
         final KnnCollector knnCollector,
         final Bits acceptDocs,
-        final boolean isFloatVector
+        final boolean isFloatVector, final boolean isAdc, final SpaceType spaceType
     ) throws IOException {
         // Try with memory optimized searcher
-        final VectorSearcher memoryOptimizedSearcher = loadMemoryOptimizedSearcherIfRequired(field);
+        final VectorSearcher memoryOptimizedSearcher = loadMemoryOptimizedSearcherIfRequired(field, isAdc);
 
         if (memoryOptimizedSearcher != null) {
+            if (isAdc) {
+                return trySearchWithMemoryOptimizedSearchAndADC(memoryOptimizedSearcher, (float[]) target, knnCollector, acceptDocs, spaceType);
+            }
+
             if (isFloatVector) {
                 memoryOptimizedSearcher.search((float[]) target, knnCollector, acceptDocs);
             } else {
@@ -255,6 +262,29 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
             return true;
         }
         return false;
+    }
+
+    private boolean trySearchWithMemoryOptimizedSearchAndADC(
+            final VectorSearcher memoryOptimizedSearcher,
+            float[] target,
+            final KnnCollector knnCollector,
+            final Bits acceptDocs,
+            final SpaceType spaceType
+    ) throws IOException {
+        // from NativeEngines990KnnVectorsReader if searching with Byte. Should never hit the below path.
+        if (spaceType == null) return false;
+
+        // but then how do I pass in the ADC variable?
+        // I need to get the space type from an encoding function, possibly by looking up the field.
+        // can't go to the faissIndex member variable.
+        // I must instead go to the fieldinfos on the flatVectorsReader
+//                this.flatVectorsReader.getRandomVectorScorer(field, target).;
+        if (memoryOptimizedSearcher instanceof FaissMemoryOptimizedSearcher faissMemoryOptimizedSearcher) {
+            faissMemoryOptimizedSearcher.searchWithAdc(target, knnCollector, acceptDocs, spaceType);
+            return true;
+        }
+        return false;
+
     }
 
     private void loadCacheKeyMap() {
@@ -271,7 +301,8 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
         vectorSearchers = new HashMap<>(RESERVE_TWICE_SPACE * segmentReadState.fieldInfos.size(), SUFFICIENT_LOAD_FACTOR);
 
         for (final FieldInfo fieldInfo : segmentReadState.fieldInfos) {
-            final IOSupplier<VectorSearcher> searcherIOSupplier = getVectorSearcherSupplier(fieldInfo);
+            // TODO: verify that adc does not change this calculation/break anything
+            final IOSupplier<VectorSearcher> searcherIOSupplier = getVectorSearcherSupplier(fieldInfo,false);
             if (searcherIOSupplier != null) {
                 // This field type is supported
                 vectorSearchers.put(fieldInfo.getName(), new VectorSearcherHolder());
@@ -294,7 +325,7 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
         return cacheKeys;
     }
 
-    private VectorSearcher loadMemoryOptimizedSearcherIfRequired(final String fieldName) {
+    private VectorSearcher loadMemoryOptimizedSearcherIfRequired(final String fieldName, boolean isAdc) {
         final VectorSearcherHolder searcherHolder = vectorSearchers.get(fieldName);
         if (searcherHolder == null) {
             // This is not KNN field or unsupported field.
@@ -315,7 +346,7 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
             try {
                 final FieldInfo fieldInfo = segmentReadState.fieldInfos.fieldInfo(fieldName);
                 if (fieldInfo != null) {
-                    final IOSupplier<VectorSearcher> searcherSupplier = getVectorSearcherSupplier(fieldInfo);
+                    final IOSupplier<VectorSearcher> searcherSupplier = getVectorSearcherSupplier(fieldInfo, isAdc);
                     if (searcherSupplier != null) {
                         searcher = searcherSupplier.get();
                         if (searcher != null) {
@@ -340,13 +371,12 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
         }
     }
 
-    private IOSupplier<VectorSearcher> getVectorSearcherSupplier(final FieldInfo fieldInfo) {
+    private IOSupplier<VectorSearcher> getVectorSearcherSupplier(final FieldInfo fieldInfo, boolean isAdc) {
         // Skip non-knn fields.
         final Map<String, String> attributes = fieldInfo.attributes();
         if (attributes == null || attributes.containsKey(KNN_FIELD) == false) {
             return null;
         }
-
         // Try to get KNN engine from fieldInfo.
         final KNNEngine knnEngine = FieldInfoExtractor.extractKNNEngine(fieldInfo);
 
@@ -365,7 +395,7 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
         // Start creating searcher
         final String fileName = KNNCodecUtil.getNativeEngineFileFromFieldInfo(fieldInfo, segmentReadState.segmentInfo);
         if (fileName != null) {
-            return () -> searcherFactory.createVectorSearcher(segmentReadState.directory, fileName);
+            return () -> searcherFactory.createVectorSearcher(segmentReadState.directory, fileName, isAdc);
         }
 
         // Not supported
