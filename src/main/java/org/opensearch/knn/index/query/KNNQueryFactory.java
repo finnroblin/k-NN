@@ -99,6 +99,7 @@ public class KNNQueryFactory extends BaseQueryFactory {
                         .rescoreContext(rescoreContext)
                         .shardId(shardId)
                         .isMemoryOptimizedSearch(memoryOptimizedSearchEnabled)
+                        .expandNestedDocs(expandNested)
                         .build();
                     break;
                 default:
@@ -116,6 +117,7 @@ public class KNNQueryFactory extends BaseQueryFactory {
                         .rescoreContext(rescoreContext)
                         .shardId(shardId)
                         .isMemoryOptimizedSearch(memoryOptimizedSearchEnabled)
+                        .expandNestedDocs(expandNested)
                         .build();
             }
 

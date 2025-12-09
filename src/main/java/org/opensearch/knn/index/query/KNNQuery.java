@@ -64,6 +64,7 @@ public class KNNQuery extends Query {
     @Getter
     private boolean explain;
     private boolean isMemoryOptimizedSearch;
+    private boolean expandNestedDocs;
 
     // Note: ideally query should not have to deal with shard level information. Adding it for logging purposes only
     // TODO: ThreadContext does not work with logger, remove this from here once its figured out

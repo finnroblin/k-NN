@@ -87,6 +87,7 @@ public abstract class KNNWeight extends Weight {
 
     protected final QuantizationService quantizationService;
     private final KnnExplanation knnExplanation;
+    private final boolean expandNestedDocs;
 
     public KNNWeight(KNNQuery query, float boost) {
         this(query, boost, null);
@@ -101,6 +102,7 @@ public abstract class KNNWeight extends Weight {
         this.exactSearcher = DEFAULT_EXACT_SEARCHER;
         this.quantizationService = QuantizationService.getInstance();
         this.knnExplanation = new KnnExplanation();
+        this.expandNestedDocs = query.isExpandNestedDocs();
     }
 
     public static void initialize(ModelDao modelDao) {
@@ -300,19 +302,45 @@ public abstract class KNNWeight extends Weight {
         final SegmentReader reader = Lucene.segmentReader(context.reader());
         final String segmentName = reader.getSegmentName();
 
-        final StopWatch stopWatch = startStopWatch(log);
-        final BitSet filterBitSet = getFilteredDocsBitSet(context);
-        stopStopWatchAndLog(log, stopWatch, "FilterBitSet creation", knnQuery.getShardId(), segmentName, knnQuery.getField());
+        // final StopWatch stopWatch = startStopWatch(log);
+        // final BitSet filterBitSet = getFilteredDocsBitSet(context);
+        // stopStopWatchAndLog(log, stopWatch, "FilterBitSet creation", knnQuery.getShardId(), segmentName, knnQuery.getField());
 
         // Save its cardinality, as the cardinality calculation is expensive.
-        final int filterCardinality = filterBitSet.cardinality();
+        // final int filterCardinality = filterBitSet.cardinality();
 
         // We don't need to go to JNI layer if no documents are found which satisfy the filters
         // We should give this condition a deeper look that where it should be placed. For now I feel this is a good
         // place,
-        if (filterWeight != null && filterCardinality == 0) {
+        // if (filterWeight != null && filterCardinality == 0) {
+        // filterWeight == null -> cardinality = 0
+        // filterWeight.scorer(ctx) == null -> cardinality = 0
+        // Other cases:
+        // liveDocs = ctx.reader().getLiveDocs
+        // maxDocs = ctx.reader().maxDoc()
+        // bitset is given iterator , liveDocs, maxDoc
+        // we need to figure out how to get the cardinality from that.
+        // liveDocs == null -> there are no deleted docs.
+        // if there are deleted docs then we need to use a bitset anyways to take the deleted docs into account.
+        // otherwise we can use the proxy that there
+        // filteredDocIdsIterator instanceof BitSetIterator whenever the filter query returns a BitSet. THis may or may not be rare.
+        // filterWeight is used in createBitSet to do a linear scan for the exactSearch.
+        // so cardinality is still questionable.
+        // if canuseexactsearchwithoutbitset(context)
+        // then we can go forward with the call to
+        // DocIdSetIterator disi = this.filterWeight.scorer(context).iterator();
+
+        FilterDISIOrEmptyBitSet filterDISI = createFilterDocIdSetIteratorFromContext(context);
+        // if it's null then the cardinality is 0...
+
+        // we should avoid the empty result... early stop if filter bitset cardinality is 0.
+        if (filterDISI.maybeEmptyBitSet.isPresent()) {
             return PerLeafResult.EMPTY_RESULT;
         }
+
+        final filterDocIdSetIteratorAndCardinality fDISIAndCardinality = filterDISI.maybeFilterDocIdSetIteratorAndCardinality.get();
+        final DocIdSetIterator filteredDocIdsIterator = fDISIAndCardinality.filteredDocIdsIterator();
+        final int filterCardinality = fDISIAndCardinality.cardinality();
         if (knnQuery.isExplain()) {
             knnExplanation.setCardinality(filterCardinality);
         }
@@ -323,14 +351,38 @@ public abstract class KNNWeight extends Weight {
          * This improves the recall.
          */
         if (isFilteredExactSearchPreferred(filterCardinality)) {
-            final TopDocs result = doExactSearch(context, new BitSetIterator(filterBitSet, filterCardinality), filterCardinality, k);
-            return new PerLeafResult(
-                filterWeight == null ? null : filterBitSet,
-                filterCardinality,
-                result,
-                PerLeafResult.SearchMode.EXACT_SEARCH
-            );
+            TopDocs result = doExactSearch(context, filteredDocIdsIterator, filterCardinality, k);
+
+            // in the case where expandNestedDocs is true we must materialize the bitset as
+            if (expandNestedDocs) {
+                BitSet filterBitSetForExpandNestedDocs = BitSet.of(filteredDocIdsIterator, reader.maxDoc());
+                return new PerLeafResult(
+                    filterWeight == null ? null : filterBitSetForExpandNestedDocs,
+                    filterCardinality,
+                    result,
+                    PerLeafResult.SearchMode.EXACT_SEARCH
+                );
+            }
+            return new PerLeafResult(null, filterCardinality, result, PerLeafResult.SearchMode.EXACT_SEARCH);
         }
+
+        // at this point we know we need to go to approximate search.
+
+        // get the bitset and maxdoc
+        final int maxDoc = context.reader().maxDoc();
+
+        // if (filterWeight != null && filterCardinality == maxDoc) {
+
+        StopWatch filterBitSetstopWatch = startStopWatch(log);
+        final BitSet filterBitSet = BitSet.of(filteredDocIdsIterator, maxDoc);
+        stopStopWatchAndLog(
+            log,
+            filterBitSetstopWatch,
+            "FilterBitSet creation from filteredDocIdsIterator",
+            knnQuery.getShardId(),
+            segmentName,
+            knnQuery.getField()
+        );
 
         final StopWatch annStopWatch = startStopWatch(log);
         final TopDocs topDocs = approximateSearch(context, filterBitSet, filterCardinality, k);
@@ -340,7 +392,7 @@ public abstract class KNNWeight extends Weight {
             knnExplanation.addLeafResult(context.id(), topDocs.scoreDocs.length);
         }
         // See whether we have to perform exact search based on approx search results
-        // This is required if there are no native engine files or if approximate search returned
+        // This is required if there are nlso native engine files or if approximate search returned
         // results less than K, though we have more than k filtered docs
         if (isExactSearchRequire(context, filterCardinality, topDocs.scoreDocs.length)) {
             final BitSetIterator docs = filterWeight != null ? new BitSetIterator(filterBitSet, filterCardinality) : null;
@@ -352,7 +404,6 @@ public abstract class KNNWeight extends Weight {
                 PerLeafResult.SearchMode.EXACT_SEARCH
             );
         }
-
         return new PerLeafResult(
             filterWeight == null ? null : filterBitSet,
             filterCardinality,
@@ -377,6 +428,59 @@ public abstract class KNNWeight extends Weight {
         return createBitSet(scorer.iterator(), liveDocs, maxDoc);
     }
 
+    // might need to modify the below to also return a FixBitSet(0) optionally.
+    private record filterDocIdSetIteratorAndCardinality(FilteredDocIdSetIterator filteredDocIdsIterator, int cardinality,
+        BitSet filterBitSet) {
+    };
+
+    private record FilterDISIOrEmptyBitSet(Optional<filterDocIdSetIteratorAndCardinality> maybeFilterDocIdSetIteratorAndCardinality,
+        Optional<BitSet> maybeEmptyBitSet) {
+    };
+
+    private filterDocIdSetIteratorAndCardinality createFilterDocIdSetIterator(
+        final DocIdSetIterator filteredDocIdsIterator,
+        final Bits liveDocs,
+        int maxDoc
+    ) {
+        // Thread-safe as searchLeaf is executed on a single thread even in case of concurrent segment search.
+        final int[] cardinalityHolder = new int[1];
+        final BitSet filterBitSet = new FixedBitSet(maxDoc);
+
+        FilteredDocIdSetIterator filterIterator = new FilteredDocIdSetIterator(filteredDocIdsIterator) {
+            @Override
+            protected boolean match(int doc) {
+                boolean matches = liveDocs == null || liveDocs.get(doc);
+                if (matches) {
+                    cardinalityHolder[0]++;
+                    filterBitSet.set(doc);
+                }
+                return matches;
+            }
+        };
+
+        return new filterDocIdSetIteratorAndCardinality(filterIterator, cardinalityHolder[0], filterBitSet);
+    }
+
+    // need to handle the FixedBitSet case...
+    private FilterDISIOrEmptyBitSet createFilterDocIdSetIteratorFromContext(LeafReaderContext ctx) throws IOException {
+        if (this.filterWeight == null) {
+            return new FilterDISIOrEmptyBitSet(Optional.empty(), Optional.of(new FixedBitSet(0)));
+        }
+
+        final Bits liveDocs = ctx.reader().getLiveDocs();
+        final int maxDoc = ctx.reader().maxDoc();
+
+        final Scorer scorer = filterWeight.scorer(ctx);
+        if (scorer == null) {
+            return new FilterDISIOrEmptyBitSet(Optional.empty(), Optional.of(new FixedBitSet(0)));
+        }
+
+        return new FilterDISIOrEmptyBitSet(
+            Optional.of(createFilterDocIdSetIterator(scorer.iterator(), liveDocs, maxDoc)),
+            Optional.empty()
+        );
+    }
+
     private BitSet createBitSet(final DocIdSetIterator filteredDocIdsIterator, final Bits liveDocs, int maxDoc) throws IOException {
         if (liveDocs == null && filteredDocIdsIterator instanceof BitSetIterator) {
             // If we already have a BitSet and no deletions, reuse the BitSet
@@ -391,9 +495,41 @@ public abstract class KNNWeight extends Weight {
         };
         return BitSet.of(filterIterator, maxDoc);
     }
+    // private TopDocs doExactSearch(
+    // final LeafReaderContext context,
+    // // Below is passed in as BitSet. But we can add a new Ctor to also pass in the FilterDocIdSetIterator acceptedDocs, then it should
+    // work.
+    // // But I'm actually not sure why the compiler doesn't let me pass in.
+    // final FilteredDocIdSetIterator acceptedDocs,
+    // final long numberOfAcceptedDocs,
+    // final int k
+    // ) throws IOException {
+    // final ExactSearcherContextBuilder exactSearcherContextBuilder = ExactSearcher.ExactSearcherContext.builder()
+    // .parentsFilter(knnQuery.getParentsFilter())
+    // .k(k)
+    // // setting to true, so that if quantization details are present we want to do search on the quantized
+    // // vectors as this flow is used in first pass of search.
+    // .useQuantizedVectorsForSearch(true)
+    // .field(knnQuery.getField())
+    // .radius(knnQuery.getRadius())
+    // .matchedDocsIterator(acceptedDocs)
+    // .numberOfMatchedDocs(numberOfAcceptedDocs)
+    // .floatQueryVector(knnQuery.getQueryVector())
+    // .byteQueryVector(knnQuery.getByteQueryVector())
+    // .isMemoryOptimizedSearchEnabled(knnQuery.isMemoryOptimizedSearch());
+    //
+    // if (knnQuery.getContext() != null) {
+    // exactSearcherContextBuilder.maxResultWindow(knnQuery.getContext().getMaxResultWindow());
+    // }
+    //
+    // return exactSearch(context, exactSearcherContextBuilder.build());
+    // }
 
     private TopDocs doExactSearch(
         final LeafReaderContext context,
+        // Below is passed in as BitSet. But we can add a new Ctor to also pass in the FilterDocIdSetIterator acceptedDocs, then it should
+        // work.
+        // But I'm actually not sure why the compiler doesn't let me pass in.
         final DocIdSetIterator acceptedDocs,
         final long numberOfAcceptedDocs,
         final int k
