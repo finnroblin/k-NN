@@ -42,9 +42,12 @@ import org.opensearch.knn.indices.ModelUtil;
 import org.opensearch.knn.plugin.stats.KNNCounter;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 import static org.opensearch.knn.common.KNNConstants.KNN_ENGINE;
 import static org.opensearch.knn.common.KNNConstants.MODEL_ID;
@@ -338,9 +341,27 @@ public abstract class KNNWeight extends Weight {
             return PerLeafResult.EMPTY_RESULT;
         }
 
-        final filterDocIdSetIteratorAndCardinality fDISIAndCardinality = filterDISI.maybeFilterDocIdSetIteratorAndCardinality.get();
-        final DocIdSetIterator filteredDocIdsIterator = fDISIAndCardinality.filteredDocIdsIterator();
-        final int filterCardinality = fDISIAndCardinality.cardinality();
+        // Handle the case where there's no filter (both optionals are empty)
+        final DocIdSetIterator filteredDocIdsIterator;
+        final int filterCardinality;
+        
+        if (filterDISI.maybeFilterDocIdSetIteratorAndCardinality.isEmpty()) {
+            // No filter - all documents are valid
+            filterCardinality = context.reader().maxDoc();
+            filteredDocIdsIterator = null;
+        } else {
+            final filterDocIdSetIteratorAndCardinality fDISIAndCardinality = filterDISI.maybeFilterDocIdSetIteratorAndCardinality.get();
+            filteredDocIdsIterator = fDISIAndCardinality.filteredDocIdsIterator();
+            
+            // Compute cardinality by consuming iterator WITHOUT materializing bitset
+            filterCardinality = fDISIAndCardinality.cardinality();
+            
+            // Early return if cardinality is 0
+            if (filterCardinality == 0) {
+                return PerLeafResult.EMPTY_RESULT;
+            }
+        }
+        
         if (knnQuery.isExplain()) {
             knnExplanation.setCardinality(filterCardinality);
         }
@@ -353,11 +374,13 @@ public abstract class KNNWeight extends Weight {
         if (isFilteredExactSearchPreferred(filterCardinality)) {
             TopDocs result = doExactSearch(context, filteredDocIdsIterator, filterCardinality, k);
 
-            // in the case where expandNestedDocs is true we must materialize the bitset as
-            if (expandNestedDocs) {
-                BitSet filterBitSetForExpandNestedDocs = BitSet.of(filteredDocIdsIterator, reader.maxDoc());
+            // in the case where expandNestedDocs is true we must materialize the bitset
+            if (expandNestedDocs && filteredDocIdsIterator != null) {
+                // Need to get bitset from the already-consumed iterator
+                final filterDocIdSetIteratorAndCardinality fDISIAndCardinality = filterDISI.maybeFilterDocIdSetIteratorAndCardinality.get();
+                BitSet filterBitSetForExpandNestedDocs = fDISIAndCardinality.filterBitSet();
                 return new PerLeafResult(
-                    filterWeight == null ? null : filterBitSetForExpandNestedDocs,
+                    filterBitSetForExpandNestedDocs,
                     filterCardinality,
                     result,
                     PerLeafResult.SearchMode.EXACT_SEARCH
@@ -368,13 +391,15 @@ public abstract class KNNWeight extends Weight {
 
         // at this point we know we need to go to approximate search.
 
-        // get the bitset and maxdoc
-        final int maxDoc = context.reader().maxDoc();
-
-        // if (filterWeight != null && filterCardinality == maxDoc) {
-
+        // Get or materialize the bitset for ANN search
         StopWatch filterBitSetstopWatch = startStopWatch(log);
-        final BitSet filterBitSet = BitSet.of(filteredDocIdsIterator, maxDoc);
+        final BitSet filterBitSet;
+        if (filteredDocIdsIterator != null) {
+            final filterDocIdSetIteratorAndCardinality fDISIAndCardinality = filterDISI.maybeFilterDocIdSetIteratorAndCardinality.get();
+            filterBitSet = fDISIAndCardinality.filterBitSet();
+        } else {
+            filterBitSet = null;
+        }
         stopStopWatchAndLog(
             log,
             filterBitSetstopWatch,
@@ -429,8 +454,43 @@ public abstract class KNNWeight extends Weight {
     }
 
     // might need to modify the below to also return a FixBitSet(0) optionally.
-    private record filterDocIdSetIteratorAndCardinality(FilteredDocIdSetIterator filteredDocIdsIterator, int cardinality,
-        BitSet filterBitSet) {
+    private record filterDocIdSetIteratorAndCardinality(DocIdSetIterator originalIterator, Bits liveDocs, int maxDoc, 
+        BitSet cachedBitSet, Integer cachedCardinality) {
+        
+        private BitSet materializeBitSet() throws IOException {
+            if (cachedBitSet != null) return cachedBitSet;
+            
+            FilteredDocIdSetIterator filterIterator = new FilteredDocIdSetIterator(originalIterator) {
+                @Override
+                protected boolean match(int doc) {
+                    return liveDocs == null || liveDocs.get(doc);
+                }
+            };
+            return BitSet.of(filterIterator, maxDoc);
+        }
+        
+        public int cardinality() throws IOException {
+            if (cachedCardinality != null) return cachedCardinality;
+            return materializeBitSet().cardinality();
+        }
+        
+        public DocIdSetIterator filteredDocIdsIterator() {
+            // If we already materialized, return iterator from bitset
+            if (cachedBitSet != null && cachedCardinality != null) {
+                return new BitSetIterator(cachedBitSet, cachedCardinality);
+            }
+            // Otherwise return filtered iterator
+            return new FilteredDocIdSetIterator(originalIterator) {
+                @Override
+                protected boolean match(int doc) {
+                    return liveDocs == null || liveDocs.get(doc);
+                }
+            };
+        }
+        
+        public BitSet filterBitSet() throws IOException {
+            return materializeBitSet();
+        }
     };
 
     private record FilterDISIOrEmptyBitSet(Optional<filterDocIdSetIteratorAndCardinality> maybeFilterDocIdSetIteratorAndCardinality,
@@ -442,29 +502,14 @@ public abstract class KNNWeight extends Weight {
         final Bits liveDocs,
         int maxDoc
     ) {
-        // Thread-safe as searchLeaf is executed on a single thread even in case of concurrent segment search.
-        final int[] cardinalityHolder = new int[1];
-        final BitSet filterBitSet = new FixedBitSet(maxDoc);
-
-        FilteredDocIdSetIterator filterIterator = new FilteredDocIdSetIterator(filteredDocIdsIterator) {
-            @Override
-            protected boolean match(int doc) {
-                boolean matches = liveDocs == null || liveDocs.get(doc);
-                if (matches) {
-                    cardinalityHolder[0]++;
-                    filterBitSet.set(doc);
-                }
-                return matches;
-            }
-        };
-
-        return new filterDocIdSetIteratorAndCardinality(filterIterator, cardinalityHolder[0], filterBitSet);
+        return new filterDocIdSetIteratorAndCardinality(filteredDocIdsIterator, liveDocs, maxDoc, null, null);
     }
 
     // need to handle the FixedBitSet case...
     private FilterDISIOrEmptyBitSet createFilterDocIdSetIteratorFromContext(LeafReaderContext ctx) throws IOException {
         if (this.filterWeight == null) {
-            return new FilterDISIOrEmptyBitSet(Optional.empty(), Optional.of(new FixedBitSet(0)));
+            // No filter means all docs are valid - return null to indicate no filtering needed
+            return new FilterDISIOrEmptyBitSet(Optional.empty(), Optional.empty());
         }
 
         final Bits liveDocs = ctx.reader().getLiveDocs();
@@ -472,6 +517,7 @@ public abstract class KNNWeight extends Weight {
 
         final Scorer scorer = filterWeight.scorer(ctx);
         if (scorer == null) {
+            // Filter exists but matches no documents
             return new FilterDISIOrEmptyBitSet(Optional.empty(), Optional.of(new FixedBitSet(0)));
         }
 
