@@ -305,34 +305,6 @@ public abstract class KNNWeight extends Weight {
         final SegmentReader reader = Lucene.segmentReader(context.reader());
         final String segmentName = reader.getSegmentName();
 
-        // final StopWatch stopWatch = startStopWatch(log);
-        // final BitSet filterBitSet = getFilteredDocsBitSet(context);
-        // stopStopWatchAndLog(log, stopWatch, "FilterBitSet creation", knnQuery.getShardId(), segmentName, knnQuery.getField());
-
-        // Save its cardinality, as the cardinality calculation is expensive.
-        // final int filterCardinality = filterBitSet.cardinality();
-
-        // We don't need to go to JNI layer if no documents are found which satisfy the filters
-        // We should give this condition a deeper look that where it should be placed. For now I feel this is a good
-        // place,
-        // if (filterWeight != null && filterCardinality == 0) {
-        // filterWeight == null -> cardinality = 0
-        // filterWeight.scorer(ctx) == null -> cardinality = 0
-        // Other cases:
-        // liveDocs = ctx.reader().getLiveDocs
-        // maxDocs = ctx.reader().maxDoc()
-        // bitset is given iterator , liveDocs, maxDoc
-        // we need to figure out how to get the cardinality from that.
-        // liveDocs == null -> there are no deleted docs.
-        // if there are deleted docs then we need to use a bitset anyways to take the deleted docs into account.
-        // otherwise we can use the proxy that there
-        // filteredDocIdsIterator instanceof BitSetIterator whenever the filter query returns a BitSet. THis may or may not be rare.
-        // filterWeight is used in createBitSet to do a linear scan for the exactSearch.
-        // so cardinality is still questionable.
-        // if canuseexactsearchwithoutbitset(context)
-        // then we can go forward with the call to
-        // DocIdSetIterator disi = this.filterWeight.scorer(context).iterator();
-
         FilterDISIOrEmptyBitSet filterDISI = createFilterDocIdSetIteratorFromContext(context);
         // if it's null then the cardinality is 0...
 
@@ -346,8 +318,8 @@ public abstract class KNNWeight extends Weight {
         final int filterCardinality;
         
         if (filterDISI.maybeFilterDocIdSetIteratorAndCardinality.isEmpty()) {
-            // No filter - all documents are valid
-            filterCardinality = context.reader().maxDoc();
+            // No filter - all documents are valid and the filterCardinality is 0.
+            filterCardinality = 0;
             filteredDocIdsIterator = null;
         } else {
             final filterDocIdSetIteratorAndCardinality fDISIAndCardinality = filterDISI.maybeFilterDocIdSetIteratorAndCardinality.get();
