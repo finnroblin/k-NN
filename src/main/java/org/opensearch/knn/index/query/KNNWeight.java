@@ -357,13 +357,8 @@ public abstract class KNNWeight extends Weight {
             filterCardinality = Math.toIntExact(Math.min(filterIterator.cost(), maxDoc));
         } else {
             // For other query types (e.g., PointRangeQuery), materialize BitSet for accurate cardinality
-            final StopWatch stopWatch = startStopWatch(log);
-            final long bitsetStartNanos = System.nanoTime();
             filterBitSet = createBitSet(context, filterIterator, liveDocs, maxDoc);
-            final long bitsetDurationMs = (System.nanoTime() - bitsetStartNanos) / 1_000_000;
-            log.info("BENCHMARK_BITSET_TIMING: location=cardinality_check, cardinality={}, duration_ms={}", filterBitSet.cardinality(), bitsetDurationMs);
             filterCardinality = filterBitSet.cardinality();
-            stopStopWatchAndLog(log, stopWatch, "FilterBitSet creation", knnQuery.getShardId(), segmentName, knnQuery.getField());
         }
 
         if (filterCardinality == 0) {
@@ -396,12 +391,7 @@ public abstract class KNNWeight extends Weight {
 
         // BitSet is required for: nested docs, approximate search, or exact search fallback after ANN
         if (filterBitSet == null) {
-            final StopWatch stopWatch = startStopWatch(log);
-            final long bitsetStartNanos = System.nanoTime();
             filterBitSet = createBitSet(context, filterIterator, liveDocs, maxDoc);
-            final long bitsetDurationMs = (System.nanoTime() - bitsetStartNanos) / 1_000_000;
-            log.info("BENCHMARK_BITSET_TIMING: location=before_ann, cardinality={}, duration_ms={}", filterBitSet.cardinality(), bitsetDurationMs);
-            stopStopWatchAndLog(log, stopWatch, "FilterBitSet creation", knnQuery.getShardId(), segmentName, knnQuery.getField());
         }
         final int actualCardinality = filterBitSet.cardinality();
 
