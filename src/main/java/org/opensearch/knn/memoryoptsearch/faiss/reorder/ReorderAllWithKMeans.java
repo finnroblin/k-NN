@@ -292,7 +292,6 @@ public class ReorderAllWithKMeans {
 
         System.out.println("Reorder is done!");
         System.out.println("Overriding files ...");
-        ReorderAll.switchFiles(Path.of(targetFiles.engineLuceneDirectory), targetFiles.faissIndexFileName, reorderSuffix);
         ReorderAll.switchFiles(Path.of(targetFiles.engineLuceneDirectory), targetFiles.flatVectorDataFileName, reorderSuffix);
         ReorderAll.switchFiles(Path.of(targetFiles.engineLuceneDirectory), targetFiles.flatVectorMetaFileName, reorderSuffix);
     }
