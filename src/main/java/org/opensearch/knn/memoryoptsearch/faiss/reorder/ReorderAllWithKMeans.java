@@ -249,6 +249,7 @@ public class ReorderAllWithKMeans {
 
         System.out.println("Reorder is done!");
         System.out.println("Overriding files ...");
+        ReorderAll.switchFiles(Path.of(targetFiles.engineLuceneDirectory), targetFiles.faissIndexFileName, reorderSuffix);
         ReorderAll.switchFiles(Path.of(targetFiles.engineLuceneDirectory), targetFiles.flatVectorDataFileName, reorderSuffix);
         ReorderAll.switchFiles(Path.of(targetFiles.engineLuceneDirectory), targetFiles.flatVectorMetaFileName, reorderSuffix);
     }
@@ -280,7 +281,13 @@ public class ReorderAllWithKMeans {
             : KMeansClusterer.METRIC_L2;
         int[] permutation = ClusterSorter.clusterAndSort(vectors, k, DEFAULT_NUM_ITERATIONS, metricType);
 
-        return new ReorderOrdMap(permutation);
+        ReorderOrdMap reorderOrdMap = new ReorderOrdMap(permutation);
+        // Transform the faiss index
+        try (final IndexOutput indexOutput = directory.createOutput(targetFiles.faissIndexFileName + reorderSuffix, IOContext.DEFAULT)) {
+            FaissIndexReorderTransformer.transform(idMapIndex, faissIndexInput, indexOutput, reorderOrdMap);
+        }
+
+        return reorderOrdMap;
     }
 
     private static float[][] loadVectorsFromVec(
