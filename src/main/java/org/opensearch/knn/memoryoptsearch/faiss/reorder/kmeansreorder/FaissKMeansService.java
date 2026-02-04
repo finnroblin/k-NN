@@ -6,6 +6,7 @@
 package org.opensearch.knn.memoryoptsearch.faiss.reorder.kmeansreorder;
 
 import org.opensearch.knn.jni.JNICommons;
+import org.opensearch.knn.jni.KNNLibraryLoader;
 
 /**
  * JNI service for FAISS k-means clustering.
@@ -14,7 +15,7 @@ import org.opensearch.knn.jni.JNICommons;
 public class FaissKMeansService {
 
     static {
-        System.loadLibrary("opensearchknn_faiss");
+        KNNLibraryLoader.loadFaissLibrary();
     }
 
     public static final int METRIC_L2 = 0;
