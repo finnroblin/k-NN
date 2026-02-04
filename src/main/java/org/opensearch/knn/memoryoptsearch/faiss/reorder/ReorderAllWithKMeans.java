@@ -131,11 +131,13 @@ public class ReorderAllWithKMeans {
                 if (faissIndex instanceof FaissIdMapIndex idMapIndex) {
                     final int numVectors = faissIndex.getTotalNumberOfVectors();
                     final int dimension = faissIndex.getDimension();
+                    final VectorSimilarityFunction similarityFunction = faissIndex.getVectorSimilarityFunction().getVectorSimilarityFunction();
                     System.out.println("Total #vectors: " + numVectors + " (extracted from faiss index)");
                     System.out.println("Dimension: " + dimension + " (extracted from faiss index)");
+                    System.out.println("Similarity: " + similarityFunction);
 
                     long s = System.nanoTime();
-                    final ReorderOrdMap reorderOrdMap = getOrderMap(idMapIndex, faissIndexInput, targetFiles, directory, fieldName, dimension, fieldNo, segmentName);
+                    final ReorderOrdMap reorderOrdMap = getOrderMap(idMapIndex, faissIndexInput, targetFiles, directory, fieldName, dimension, fieldNo, segmentName, similarityFunction);
                     long e = System.nanoTime();
                     System.out.println("K-Means Reordering took : " + (e - s) / 1e6 + "ms");
 
@@ -195,7 +197,7 @@ public class ReorderAllWithKMeans {
                             0,
                             dimension,
                             VectorEncoding.FLOAT32,
-                            VectorSimilarityFunction.EUCLIDEAN,
+                            similarityFunction,
                             false,
                             false
                         );
@@ -294,19 +296,24 @@ public class ReorderAllWithKMeans {
         String fieldName,
         int dimension,
         int fieldNo,
-        String segmentName
+        String segmentName,
+        VectorSimilarityFunction similarityFunction
     ) throws IOException {
         final int numVectors = idMapIndex.getTotalNumberOfVectors();
 
         System.out.println("Loading vectors from .vec file for K-Means reordering...");
-        float[][] vectors = loadVectorsFromVec(directory, targetFiles, fieldName, dimension, fieldNo, segmentName, numVectors);
+        float[][] vectors = loadVectorsFromVec(directory, targetFiles, fieldName, dimension, fieldNo, segmentName, numVectors, similarityFunction);
 
         // Determine number of clusters (k)
         int k = Math.min(DEFAULT_NUM_CLUSTERS, numVectors / 100);
         k = Math.max(k, 2); // At least 2 clusters
         System.out.println("Computing K-Means permutation with k=" + k + " clusters...");
 
-        int[] permutation = ClusterSorter.clusterAndSort(vectors, k, DEFAULT_NUM_ITERATIONS, KMeansClusterer.METRIC_L2);
+        // Use inner product metric for MAXIMUM_INNER_PRODUCT similarity
+        int metricType = (similarityFunction == VectorSimilarityFunction.MAXIMUM_INNER_PRODUCT) 
+            ? KMeansClusterer.METRIC_INNER_PRODUCT 
+            : KMeansClusterer.METRIC_L2;
+        int[] permutation = ClusterSorter.clusterAndSort(vectors, k, DEFAULT_NUM_ITERATIONS, metricType);
 
         return new ReorderOrdMap(permutation);
     }
@@ -318,7 +325,8 @@ public class ReorderAllWithKMeans {
         int dimension,
         int fieldNo,
         String segmentName,
-        int numVectors
+        int numVectors,
+        VectorSimilarityFunction similarityFunction
     ) throws IOException {
         try {
             directory.deleteFile(targetFiles.flatVectorMetaFileName + ".tmp");
@@ -372,7 +380,7 @@ public class ReorderAllWithKMeans {
                 0,
                 dimension,
                 VectorEncoding.FLOAT32,
-                VectorSimilarityFunction.EUCLIDEAN,
+                similarityFunction,
                 false,
                 false
             );

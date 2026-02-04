@@ -131,12 +131,14 @@ public class ReorderAllWithBP {
                 if (faissIndex instanceof FaissIdMapIndex idMapIndex) {
                     final int numVectors = faissIndex.getTotalNumberOfVectors();
                     final int dimension = faissIndex.getDimension();
+                    final VectorSimilarityFunction similarityFunction = faissIndex.getVectorSimilarityFunction().getVectorSimilarityFunction();
                     System.out.println("Total #vectors: " + numVectors + " (extracted from faiss index)");
                     System.out.println("Dimension: " + dimension + " (extracted from faiss index)");
+                    System.out.println("Similarity: " + similarityFunction);
 
                     // Get the permutation using BP reordering
                     long s = System.nanoTime();
-                    final ReorderOrdMap reorderOrdMap = getOrderMap(idMapIndex, faissIndexInput, targetFiles, directory, fieldName, dimension, fieldNo, segmentName);
+                    final ReorderOrdMap reorderOrdMap = getOrderMap(idMapIndex, faissIndexInput, targetFiles, directory, fieldName, dimension, fieldNo, segmentName, similarityFunction);
                     long e = System.nanoTime();
                     System.out.println("BP Reordering took : " + (e - s) / 1e6 + "ms");
 
@@ -200,7 +202,7 @@ public class ReorderAllWithBP {
                             0,
                             dimension,
                             VectorEncoding.FLOAT32,
-                            VectorSimilarityFunction.EUCLIDEAN,
+                            similarityFunction,
                             false,
                             false
                         );
@@ -302,17 +304,18 @@ public class ReorderAllWithBP {
         String fieldName,
         int dimension,
         int fieldNo,
-        String segmentName
+        String segmentName,
+        VectorSimilarityFunction similarityFunction
     ) throws IOException {
         final int numVectors = idMapIndex.getTotalNumberOfVectors();
 
         // Load vectors from .vec file
         System.out.println("Loading vectors from .vec file for BP reordering...");
-        float[][] vectors = loadVectorsFromVec(directory, targetFiles, fieldName, dimension, fieldNo, segmentName, numVectors);
+        float[][] vectors = loadVectorsFromVec(directory, targetFiles, fieldName, dimension, fieldNo, segmentName, numVectors, similarityFunction);
 
         // Compute BP permutation
         System.out.println("Computing BP permutation...");
-        int[] permutation = BpReorderer.computePermutation(vectors, VectorSimilarityFunction.EUCLIDEAN);
+        int[] permutation = BpReorderer.computePermutation(vectors, similarityFunction);
 
         return new ReorderOrdMap(permutation);
     }
@@ -324,7 +327,8 @@ public class ReorderAllWithBP {
         int dimension,
         int fieldNo,
         String segmentName,
-        int numVectors
+        int numVectors,
+        VectorSimilarityFunction similarityFunction
     ) throws IOException {
         // Clean up any existing temp files first
         try {
@@ -380,7 +384,7 @@ public class ReorderAllWithBP {
                 0,
                 dimension,
                 VectorEncoding.FLOAT32,
-                VectorSimilarityFunction.EUCLIDEAN,
+                similarityFunction,
                 false,
                 false
             );
