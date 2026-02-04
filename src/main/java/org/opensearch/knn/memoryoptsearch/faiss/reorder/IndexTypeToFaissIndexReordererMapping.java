@@ -6,7 +6,9 @@
 package org.opensearch.knn.memoryoptsearch.faiss.reorder;
 
 import lombok.experimental.UtilityClass;
+import org.opensearch.knn.memoryoptsearch.faiss.FaissHNSWIndex;
 import org.opensearch.knn.memoryoptsearch.faiss.FaissIdMapIndex;
+import org.opensearch.knn.memoryoptsearch.faiss.FaissIndexFloatFlat;
 import org.opensearch.knn.memoryoptsearch.faiss.UnsupportedFaissIndexException;
 import org.opensearch.knn.memoryoptsearch.faiss.binary.FaissBinaryHnswIndex;
 import org.opensearch.knn.memoryoptsearch.faiss.binary.FaissIndexBinaryFlat;
@@ -23,6 +25,14 @@ public class IndexTypeToFaissIndexReordererMapping {
     static {
         final Map<String, Function<String, FaissIndexReorderTransformer>> mapping = new HashMap<>();
 
+        // Float index types
+        mapping.put(FaissIdMapIndex.IXMP, FaissIdMapIndexReorderer::new);
+        mapping.put(FaissHNSWIndex.IHNF, FaissHNSWIndexReorderer::new);
+        mapping.put(FaissHNSWIndex.IHNS, FaissHNSWIndexReorderer::new);
+        mapping.put(FaissIndexFloatFlat.IXF2, FaissIndexFloatFlatReorderer::new);
+        mapping.put(FaissIndexFloatFlat.IXFI, FaissIndexFloatFlatReorderer::new);
+
+        // Binary index types
         mapping.put(FaissIdMapIndex.IBMP, FaissIdMapIndexReorderer::new);
         mapping.put(FaissBinaryHnswIndex.IBHF, FaissBinaryHnswIndexReorderer::new);
         mapping.put(FaissIndexBinaryFlat.IBXF, FaissIndexBinaryFlatReorderer::new);
