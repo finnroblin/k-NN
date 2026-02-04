@@ -314,19 +314,7 @@ public class ReorderAllWithBP {
         System.out.println("Computing BP permutation...");
         int[] permutation = BpReorderer.computePermutation(vectors, VectorSimilarityFunction.EUCLIDEAN);
 
-        final ReorderOrdMap reorderOrdMap = new ReorderOrdMap(permutation);
-
-        // Delete existing reorder file if present
-        try {
-            directory.deleteFile(targetFiles.faissIndexFileName + reorderSuffix);
-        } catch (NoSuchFileException ignored) {}
-
-        // Transform the faiss index
-        try (final IndexOutput indexOutput = directory.createOutput(targetFiles.faissIndexFileName + reorderSuffix, IOContext.DEFAULT)) {
-            FaissIndexReorderTransformer.transform(idMapIndex, faissIndexInput, indexOutput, reorderOrdMap);
-        }
-
-        return reorderOrdMap;
+        return new ReorderOrdMap(permutation);
     }
 
     private static float[][] loadVectorsFromVec(

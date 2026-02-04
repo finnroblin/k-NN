@@ -308,17 +308,7 @@ public class ReorderAllWithKMeans {
 
         int[] permutation = ClusterSorter.clusterAndSort(vectors, k, DEFAULT_NUM_ITERATIONS, KMeansClusterer.METRIC_L2);
 
-        final ReorderOrdMap reorderOrdMap = new ReorderOrdMap(permutation);
-
-        try {
-            directory.deleteFile(targetFiles.faissIndexFileName + reorderSuffix);
-        } catch (NoSuchFileException ignored) {}
-
-        try (final IndexOutput indexOutput = directory.createOutput(targetFiles.faissIndexFileName + reorderSuffix, IOContext.DEFAULT)) {
-            FaissIndexReorderTransformer.transform(idMapIndex, faissIndexInput, indexOutput, reorderOrdMap);
-        }
-
-        return reorderOrdMap;
+        return new ReorderOrdMap(permutation);
     }
 
     private static float[][] loadVectorsFromVec(
