@@ -131,7 +131,16 @@ public class ReorderAllWithBP {
                 if (faissIndex instanceof FaissIdMapIndex idMapIndex) {
                     final int numVectors = faissIndex.getTotalNumberOfVectors();
                     final int dimension = faissIndex.getDimension();
-                    final VectorSimilarityFunction similarityFunction = faissIndex.getVectorSimilarityFunction().getVectorSimilarityFunction();
+                    
+                    // Get similarity function, with fallback for binary indices
+                    VectorSimilarityFunction similarityFunction;
+                    try {
+                        similarityFunction = faissIndex.getVectorSimilarityFunction().getVectorSimilarityFunction();
+                    } catch (IllegalStateException e) {
+                        // Fallback for indices where VectorSimilarityFunction is not available
+                        similarityFunction = VectorSimilarityFunction.MAXIMUM_INNER_PRODUCT;
+                    }
+                    
                     System.out.println("Total #vectors: " + numVectors + " (extracted from faiss index)");
                     System.out.println("Dimension: " + dimension + " (extracted from faiss index)");
                     System.out.println("Similarity: " + similarityFunction);
