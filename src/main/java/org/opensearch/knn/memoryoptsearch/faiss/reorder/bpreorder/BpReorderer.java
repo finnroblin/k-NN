@@ -42,7 +42,7 @@ public class BpReorderer {
         BpVectorReorderer reorderer = new BpVectorReorderer(DUMMY_FIELD);
         reorderer.setMinPartitionSize(1);
 
-        FloatVectorValues fvv = FloatVectorValues.fromFloats(Arrays.asList(vectors), dim);
+        FloatVectorValues fvv = FloatVectorValues.fromFloats(Arrays.asList(vectors), dim); // TODO: repeated loads
         Sorter.DocMap map = reorderer.computeValueMap(fvv, similarity, null);
 
         int[] newOrder = new int[n];

@@ -325,7 +325,14 @@ public class ReorderAllWithBP {
         System.out.println("Computing BP permutation...");
         int[] permutation = BpReorderer.computePermutation(vectors, similarityFunction);
 
-        return new ReorderOrdMap(permutation);
+        final ReorderOrdMap reorderOrdMap = new ReorderOrdMap(permutation);
+
+        // Transform the faiss index
+        try (final IndexOutput indexOutput = directory.createOutput(targetFiles.faissIndexFileName + reorderSuffix, IOContext.DEFAULT)) {
+            FaissIndexReorderTransformer.transform(idMapIndex, faissIndexInput, indexOutput, reorderOrdMap);
+        }
+
+        return reorderOrdMap;
     }
 
     private static float[][] loadVectorsFromVec(
@@ -392,7 +399,7 @@ public class ReorderAllWithBP {
                 0,
                 dimension,
                 VectorEncoding.FLOAT32,
-                similarityFunction,
+                similarityFunction, // TODO: remove hardcoding of innerproduct
                 false,
                 false
             );
