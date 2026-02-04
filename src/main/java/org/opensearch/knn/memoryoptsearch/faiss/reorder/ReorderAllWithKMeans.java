@@ -49,7 +49,7 @@ import static org.apache.lucene.search.DocIdSetIterator.NO_MORE_DOCS;
 
 public class ReorderAllWithKMeans {
     private static final String reorderSuffix = ".reorder";
-    private static final int DEFAULT_NUM_CLUSTERS = 256;
+    private static final int DEFAULT_NUM_CLUSTERS = 500;
     private static final int DEFAULT_NUM_ITERATIONS = 25;
 
     public record TargetFiles(String faissIndexFileName, String flatVectorDataFileName, String flatVectorMetaFileName,
@@ -241,49 +241,6 @@ public class ReorderAllWithKMeans {
                     }
                     e = System.nanoTime();
                     System.out.println("Transforming .vec took " + ((e - s) / 1e6 + "ms"));
-
-                    System.out.println("Validating reordered .vec file ...");
-                    try (
-                        final ReorderedLucene99FlatVectorsReader reorderedReader = new ReorderedLucene99FlatVectorsReader(
-                            readState,
-                            DefaultFlatVectorScorer.INSTANCE,
-                            true
-                        );
-                        final Lucene99FlatVectorsReader originalReader = new Lucene99FlatVectorsReader(
-                            readState,
-                            DefaultFlatVectorScorer.INSTANCE
-                        )
-                    ) {
-                        final ExecutorService pool = Executors.newFixedThreadPool(4);
-                        final List<Future> futures = new ArrayList<>();
-                        for (int k = 0; k < 100; ++k) {
-                            Runnable r = () -> {
-                                try {
-                                    final FloatVectorValues originalVectorValues = originalReader.getFloatVectorValues(fieldName);
-                                    final FloatVectorValues vectorValues = reorderedReader.getFloatVectorValues(fieldName);
-                                    final KnnVectorValues.DocIndexIterator iterator = vectorValues.iterator();
-                                    int doc;
-                                    while ((doc = iterator.nextDoc()) != NO_MORE_DOCS) {
-                                        final int ord = iterator.index();
-                                        final float[] vector = vectorValues.vectorValue(ord);
-                                        final float[] expected = originalVectorValues.vectorValue(reorderOrdMap.newOrd2Old[ord]);
-                                    }
-                                } catch (Exception ex) {
-                                    ex.printStackTrace();
-                                }
-                            };
-                            futures.add(pool.submit(r));
-                        }
-
-                        for (Future fut : futures) {
-                            try {
-                                fut.get();
-                            } catch (InterruptedException | ExecutionException ex) {
-                                throw new RuntimeException(ex);
-                            }
-                        }
-                        pool.shutdown();
-                    }
                 } else {
                     throw new IllegalStateException("faissIndex is not FaissIdMapIndex! Actual type: " + faissIndex.getClass());
                 }
