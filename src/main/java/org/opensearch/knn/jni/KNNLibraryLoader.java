@@ -84,6 +84,14 @@ public class KNNLibraryLoader {
     }
 
     /**
+     * Loads the default Faiss library without checking cluster settings.
+     * Use this for standalone tools that run outside of OpenSearch.
+     */
+    public static void loadFaissLibraryDirect() {
+        loadLibrary(KNNConstants.FAISS_JNI_LIBRARY_NAME);
+    }
+
+    /**
      * Loads the NMSLIB JNI library for nearest neighbor search operations.
      */
     static void loadNmslibLibrary() {
