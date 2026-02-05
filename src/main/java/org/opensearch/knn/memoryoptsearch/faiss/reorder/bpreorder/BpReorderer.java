@@ -9,8 +9,10 @@ import org.apache.lucene.index.FloatVectorValues;
 import org.apache.lucene.index.Sorter;
 import org.apache.lucene.index.VectorSimilarityFunction;
 import org.apache.lucene.misc.index.BpVectorReorderer;
+import org.apache.lucene.search.TaskExecutor;
 
 import java.util.Arrays;
+import java.util.concurrent.ForkJoinPool;
 
 /**
  * Bipartite graph partitioning reorderer for vectors.
@@ -42,13 +44,20 @@ public class BpReorderer {
         BpVectorReorderer reorderer = new BpVectorReorderer(DUMMY_FIELD);
         reorderer.setMinPartitionSize(1);
 
-        FloatVectorValues fvv = FloatVectorValues.fromFloats(Arrays.asList(vectors), dim); // TODO: repeated loads
-        Sorter.DocMap map = reorderer.computeValueMap(fvv, similarity, null);
+        FloatVectorValues fvv = FloatVectorValues.fromFloats(Arrays.asList(vectors), dim);
 
-        int[] newOrder = new int[n];
-        for (int i = 0; i < n; i++) {
-            newOrder[i] = map.newToOld(i);
+        ForkJoinPool pool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
+        try {
+            TaskExecutor executor = new TaskExecutor(pool);
+            Sorter.DocMap map = reorderer.computeValueMap(fvv, similarity, executor);
+
+            int[] newOrder = new int[n];
+            for (int i = 0; i < n; i++) {
+                newOrder[i] = map.newToOld(i);
+            }
+            return newOrder;
+        } finally {
+            pool.shutdown();
         }
-        return newOrder;
     }
 }
