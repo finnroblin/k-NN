@@ -61,7 +61,7 @@ public class ReorderedLucene99FlatVectorsReader111 extends FlatVectorsReader {
     ) throws IOException {
         super(scorer);
 
-        if (useReorderedSuffix == false && Files.exists(Path.of("/tmp/dododo"))) {
+        if (useReorderedSuffix == false && Files.exists(Path.of("/home/ec2-user/dododo"))) {
             final Path directory = (((FSDirectory) FilterDirectory.unwrap(state.directory))).getDirectory();
             System.out.println("############### Original directory -> " + directory);
             final String afterReorderingDirectory =

@@ -83,7 +83,7 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
     private final MMapDirectory afterReorderingMMapDirectory;
 
     public NativeEngines990KnnVectorsReader(final SegmentReadState state, final FlatVectorsReader flatVectorsReader) throws IOException {
-        if (Files.exists(Path.of("/tmp/dododo"))) {
+        if (Files.exists(Path.of("/home/ec2-user/dododo"))) {
             final Path directory = (((FSDirectory) FilterDirectory.unwrap(state.directory))).getDirectory();
             System.out.println("!!!!!!!!!!!!!!!! Original directory -> " + directory);
             final String afterReorderingDirectory =
