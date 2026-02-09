@@ -83,15 +83,15 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
     private final MMapDirectory afterReorderingMMapDirectory;
 
     public NativeEngines990KnnVectorsReader(final SegmentReadState state, final FlatVectorsReader flatVectorsReader) throws IOException {
-        if (Files.exists(Path.of("/home/ec2-user/dododo"))) {
+        if (Files.exists(Path.of("/tmp/dododo"))) {
             final Path directory = (((FSDirectory) FilterDirectory.unwrap(state.directory))).getDirectory();
-            System.out.println("!!!!!!!!!!!!!!!! Original directory -> " + directory);
+            System.out.println("!!!!!!!!!!!!!!!! (native non-reordered reader) Original directory -> " + directory);
             final String afterReorderingDirectory =
-                directory.toAbsolutePath().toString().replaceAll("before-reorderingla", "after-reordering");
+                directory.toAbsolutePath().toString().replaceAll("before-reordering", "after-reordering");
             System.out.println("!!!!!!!!!!!!!!!! New directory -> " + afterReorderingDirectory);
             afterReorderingMMapDirectory = new MMapDirectory(Path.of(afterReorderingDirectory));
         } else {
-            System.out.println("&&&&&&&&&&&&&&&&& Using before-reordering .vec file.");
+            System.out.println("&&&&&&&&&&&&&&&&& (native non-reordered reader)Using before-reordering .vec file.");
             afterReorderingMMapDirectory = null;
         }
 
@@ -125,7 +125,61 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
      */
     @Override
     public FloatVectorValues getFloatVectorValues(final String field) throws IOException {
-        return flatVectorsReader.getFloatVectorValues(field);
+        FloatVectorValues values = flatVectorsReader.getFloatVectorValues(field);
+        return new FloatVectorValues() {
+            @Override
+            public int dimension() {
+                return values.dimension();
+            }
+
+            @Override
+            public int size() {
+                return values.size();
+            }
+
+            @Override
+            public float[] vectorValue(int ord) throws IOException {
+                return values.vectorValue(ord);
+            }
+
+            @Override
+            public FloatVectorValues copy() throws IOException {
+                return values.copy();
+            }
+
+            @Override
+            public DocIndexIterator iterator() {
+                DocIndexIterator delegate = values.iterator();
+                return new DocIndexIterator() {
+                    @Override
+                    public int index() {
+                        int ord = delegate.index();
+                        System.out.println("[NON-REORDERED] DocId: " + docID() + " -> Internal Vector Ord: " + ord);
+                        return ord;
+                    }
+
+                    @Override
+                    public int docID() {
+                        return delegate.docID();
+                    }
+
+                    @Override
+                    public int nextDoc() throws IOException {
+                        return delegate.nextDoc();
+                    }
+
+                    @Override
+                    public int advance(int target) throws IOException {
+                        return delegate.advance(target);
+                    }
+
+                    @Override
+                    public long cost() {
+                        return delegate.cost();
+                    }
+                };
+            }
+        };
     }
 
     /**

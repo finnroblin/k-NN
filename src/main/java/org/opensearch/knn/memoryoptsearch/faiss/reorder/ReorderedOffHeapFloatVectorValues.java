@@ -138,6 +138,7 @@ public abstract class ReorderedOffHeapFloatVectorValues extends FloatVectorValue
                         ordDoc = doc;
                         try {
                             ord = skipReader.getOrd();
+                            System.out.println("[REORDERED] DocId: " + doc + " -> Internal Vector Ord: " + ord);
                         } catch (IOException e) {
                             throw new RuntimeException(e);
                         }
