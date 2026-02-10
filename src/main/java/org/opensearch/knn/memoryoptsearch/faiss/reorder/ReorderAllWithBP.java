@@ -54,7 +54,7 @@ public class ReorderAllWithBP {
     }
 
     public static void main(String... args) throws IOException {
-        final String searchDirectory = "/home/ec2-user/k-NN/build/testclusters/integTest-0/distro/3.5.0-ARCHIVE/data";
+        final String searchDirectory = "/home/ec2-user/k-NN-gorder/build/testclusters/integTest-0/distro/3.5.0-ARCHIVE/data";
 
         final List<TargetFiles> targetFilesList = findTargetFiles(Path.of(searchDirectory));
         for (final TargetFiles targetFiles : targetFilesList) {
