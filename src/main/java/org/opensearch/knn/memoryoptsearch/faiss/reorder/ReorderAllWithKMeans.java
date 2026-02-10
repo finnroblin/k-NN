@@ -57,8 +57,8 @@ public class ReorderAllWithKMeans {
     }
 
     public static void main(String... args) throws IOException {
-        final String searchDirectory = "/home/ec2-user/k-NN/build/testclusters/integTest-0/distro/3.5.0-ARCHIVE/data";
-
+//        final String searchDirectory = "/home/ec2-user/k-NN/build/testclusters/integTest-0/distro/3.5.0-ARCHIVE/data";
+        final String searchDirectory = "/Users/finnrobl/Documents/k-NN-2/sift-binary";
         final List<TargetFiles> targetFilesList = findTargetFiles(Path.of(searchDirectory));
         for (final TargetFiles targetFiles : targetFilesList) {
             System.out.println();
@@ -140,7 +140,7 @@ public class ReorderAllWithKMeans {
                         // Fallback for indices where VectorSimilarityFunction is not available
                         similarityFunction = VectorSimilarityFunction.MAXIMUM_INNER_PRODUCT;
                     }
-                    
+
                     System.out.println("Total #vectors: " + numVectors + " (extracted from faiss index)");
                     System.out.println("Dimension: " + dimension + " (extracted from faiss index)");
                     System.out.println("Similarity: " + similarityFunction);
@@ -149,6 +149,17 @@ public class ReorderAllWithKMeans {
                     final ReorderOrdMap reorderOrdMap = getOrderMap(idMapIndex, faissIndexInput, targetFiles, directory, fieldName, dimension, fieldNo, segmentName, similarityFunction);
                     long e = System.nanoTime();
                     System.out.println("K-Means Reordering took : " + (e - s) / 1e6 + "ms");
+
+                    // Save permutation for analysis
+                    final Path permutationPath = Path.of(targetFiles.engineLuceneDirectory, "permutation_kmeans.txt");
+                    int shardId = ReorderDistanceAnalyzer.extractShardFromPath(permutationPath);
+                    ReorderDistanceAnalyzer.savePermutation(reorderOrdMap.newOrd2Old, permutationPath, shardId);
+                    System.out.println("Permutation saved to: " + permutationPath + " (shard=" + shardId + ")");
+
+                    // Print displacement stats
+//                    final ReorderDistanceAnalyzer.Stats stats = ReorderDistanceAnalyzer.computeDisplacementStats(reorderOrdMap.newOrd2Old);
+//                    final ReorderDistanceAnalyzer.Stats baseline = ReorderDistanceAnalyzer.computeBaselineStats(numVectors);
+//                    System.out.println(ReorderDistanceAnalyzer.compareStats(stats, baseline));
 
                     for (final String reorderedFile : Arrays.asList(
                         targetFiles.flatVectorDataFileName + reorderSuffix,

@@ -327,6 +327,13 @@ public class ReorderAllWithBP {
 
         final ReorderOrdMap reorderOrdMap = new ReorderOrdMap(permutation);
 
+        // Save permutation for analysis
+        final Path permutationPath = Path.of(targetFiles.engineLuceneDirectory, "permutation_bp.txt");
+        int shardId = ReorderDistanceAnalyzer.extractShardFromPath(permutationPath);
+        ReorderDistanceAnalyzer.savePermutation(reorderOrdMap.newOrd2Old, permutationPath, shardId);
+        System.out.println("Permutation saved to: " + permutationPath + " (shard=" + shardId + ")");
+
+
         // Transform the faiss index
         try (final IndexOutput indexOutput = directory.createOutput(targetFiles.faissIndexFileName + reorderSuffix, IOContext.DEFAULT)) {
             FaissIndexReorderTransformer.transform(idMapIndex, faissIndexInput, indexOutput, reorderOrdMap);
