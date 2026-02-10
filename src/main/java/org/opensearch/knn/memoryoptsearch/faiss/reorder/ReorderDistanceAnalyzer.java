@@ -10,6 +10,7 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.DoubleSummaryStatistics;
 
 /**
@@ -28,10 +29,27 @@ public class ReorderDistanceAnalyzer {
     }
 
     /**
-     * Saves the permutation (newOrd2Old) to a file.
-     */
-    public static void savePermutation(int[] newOrd2Old, Path outputPath) throws IOException {
+     * Extracts shard number from permutation path (e.g., /0/index/permutation.txt -> 0). */public static int extractShardFromPath(Path path) {
+        String pathStr = path.toString();
+        int indexPos = pathStr.lastIndexOf("/index/");
+        if (indexPos > 0) {
+            int slashBefore = pathStr.lastIndexOf('/', indexPos - 1);
+            if (slashBefore >= 0) {
+                try {
+                    return Integer.parseInt(pathStr.substring(slashBefore + 1, indexPos));
+                } catch (NumberFormatException e) {
+                    return -1;
+                }
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Saves the permutation (newOrd2Old) to a file with shard and timestamp header. */public static void savePermutation(int[] newOrd2Old, Path outputPath, int shardId) throws IOException {
         try (BufferedWriter writer = Files.newBufferedWriter(outputPath)) {
+            writer.write("# shard=" + shardId + " timestamp=" + Instant.now().toString());
+            writer.newLine();
             for (int i = 0; i < newOrd2Old.length; i++) {
                 writer.write(Integer.toString(newOrd2Old[i]));
                 writer.newLine();
