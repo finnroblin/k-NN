@@ -129,6 +129,16 @@ public class ReorderAll {
                     final long e = System.nanoTime();
                     System.out.println("Reordering took : " + (e - s) / 1e6 + "ms");
 
+                    // Save permutation for analysis
+                    final Path permutationPath = Path.of(targetFiles.engineLuceneDirectory, "permutation.txt");
+                    ReorderDistanceAnalyzer.savePermutation(reorderOrdMap.newOrd2Old, permutationPath);
+                    System.out.println("Permutation saved to: " + permutationPath);
+
+                    // Print displacement stats
+                    final ReorderDistanceAnalyzer.Stats stats = ReorderDistanceAnalyzer.computeDisplacementStats(reorderOrdMap.newOrd2Old);
+                    final ReorderDistanceAnalyzer.Stats baseline = ReorderDistanceAnalyzer.computeBaselineStats(numVectors);
+                    System.out.println(ReorderDistanceAnalyzer.compareStats(stats, baseline));
+
                     // Remove existing reordered files
                     for (final String reorderedFile : Arrays.asList(
                         targetFiles.flatVectorDataFileName + reorderSuffix,

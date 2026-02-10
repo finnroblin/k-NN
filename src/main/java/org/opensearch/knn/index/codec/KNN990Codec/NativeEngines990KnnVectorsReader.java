@@ -154,7 +154,7 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
                     @Override
                     public int index() {
                         int ord = delegate.index();
-                        System.out.println("[NON-REORDERED] DocId: " + docID() + " -> Internal Vector Ord: " + ord);
+//                        System.out.println("[NON-REORDERED] DocId: " + docID() + " -> Internal Vector Ord: " + ord);
                         return ord;
                     }
 

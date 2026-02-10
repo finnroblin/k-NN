@@ -283,6 +283,12 @@ public class NativeEngineKnnVectorQuery extends Query {
             return perLeafResult;
         }
         Set<Integer> docIds = Arrays.stream(perLeafResult.getResult().scoreDocs).map(scoreDoc -> scoreDoc.doc).collect(Collectors.toSet());
+        
+        // Log actual doc IDs for rescoring analysis
+        if (log.isDebugEnabled()) {
+            log.debug("[KNN] ExactSearcher rescoring docIds: {}, field: {}", docIds, knnQuery.getField());
+        }
+
         DocIdSetIterator allSiblings = queryUtils.getAllSiblings(
             leafReaderContext,
             docIds,
@@ -454,6 +460,12 @@ public class NativeEngineKnnVectorQuery extends Query {
                 final Set<Integer> docIds = Arrays.stream(perLeafeResult.getResult().scoreDocs)
                     .map(scoreDoc -> scoreDoc.doc)
                     .collect(Collectors.toSet());
+
+                // Log actual doc IDs for rescoring analysis
+                if (log.isDebugEnabled()) {
+                    log.debug("[KNN] ExactSearcher rescoring docIds: {}, field: {}", docIds, knnQuery.getField());
+                }
+
                 DocIdSetIterator matchedDocs;
                 if (knnQuery.getParentsFilter() != null) {
                     matchedDocs = queryUtils.getAllSiblings(
