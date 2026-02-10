@@ -87,8 +87,8 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
             final Path directory = (((FSDirectory) FilterDirectory.unwrap(state.directory))).getDirectory();
             System.out.println("!!!!!!!!!!!!!!!! (native non-reordered reader) Original directory -> " + directory);
             final String afterReorderingDirectory =
-                directory.toAbsolutePath().toString().replaceAll("before-reordering", "after-reordering");
-            System.out.println("!!!!!!!!!!!!!!!! New directory -> " + afterReorderingDirectory);
+                directory.toAbsolutePath().toString().replaceAll("before-reordering", "before-reordering/data/after-reordering");
+            System.out.println("!!!!!!!!!!!!!!!!! New directory -> " + afterReorderingDirectory);
             afterReorderingMMapDirectory = new MMapDirectory(Path.of(afterReorderingDirectory));
         } else {
             System.out.println("&&&&&&&&&&&&&&&&& (native non-reordered reader)Using before-reordering .vec file.");
