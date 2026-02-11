@@ -5,6 +5,7 @@
 
 package org.opensearch.knn.memoryoptsearch.faiss.reorder;
 
+import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.hnsw.DefaultFlatVectorScorer;
 import org.apache.lucene.codecs.lucene99.Lucene99FlatVectorsReader;
 import org.apache.lucene.index.DocValuesSkipIndexType;
@@ -296,6 +297,7 @@ public class ReorderAllWithKMeans {
         // Transform the faiss index
         try (final IndexOutput indexOutput = directory.createOutput(targetFiles.faissIndexFileName + reorderSuffix, IOContext.DEFAULT)) {
             FaissIndexReorderTransformer.transform(idMapIndex, faissIndexInput, indexOutput, reorderOrdMap);
+            CodecUtil.writeFooter(indexOutput);
         }
 
         return reorderOrdMap;
