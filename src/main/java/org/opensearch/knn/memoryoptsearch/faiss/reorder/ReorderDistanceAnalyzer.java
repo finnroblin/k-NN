@@ -125,16 +125,22 @@ public class ReorderDistanceAnalyzer {
     }
 
     /**
-     * Maps docIds (newOrds) back to oldOrds using permutation.
+     * Maps docIds (which equal oldOrds) to newOrds using inverted permutation.
+     * permutation[newOrd] = oldOrd, so we invert to get oldOrd → newOrd
      */
-    public static List<Integer> mapToOldOrds(List<Integer> newOrds, int[] newOrd2Old) {
-        List<Integer> oldOrds = new ArrayList<>();
-        for (int newOrd : newOrds) {
-            if (newOrd >= 0 && newOrd < newOrd2Old.length) {
-                oldOrds.add(newOrd2Old[newOrd]);
+    public static List<Integer> mapToNewOrds(List<Integer> docIds, int[] newOrd2Old) {
+        // Build oldOrd2New (inverse of newOrd2Old)
+        int[] oldOrd2New = new int[newOrd2Old.length];
+        for (int newOrd = 0; newOrd < newOrd2Old.length; newOrd++) {
+            oldOrd2New[newOrd2Old[newOrd]] = newOrd;
+        }
+        List<Integer> newOrds = new ArrayList<>();
+        for (int docId : docIds) {
+            if (docId >= 0 && docId < oldOrd2New.length) {
+                newOrds.add(oldOrd2New[docId]);
             }
         }
-        return oldOrds;
+        return newOrds;
     }
 
     public static void main(String[] args) throws IOException {
@@ -171,14 +177,14 @@ public class ReorderDistanceAnalyzer {
             }
         }
 
-        // Compute page faults: baseline (oldOrds) vs reordered (newOrds)
+        // Compute page faults: baseline (docIds=oldOrds) vs reordered (newOrds)
         double[] baselineFaults = new double[queries.size()];
         double[] reorderedFaults = new double[queries.size()];
         for (int i = 0; i < queries.size(); i++) {
-            List<Integer> newOrds = queries.get(i);
-            List<Integer> oldOrds = mapToOldOrds(newOrds, permutation);
-            baselineFaults[i] = computePageFaults(oldOrds, pageSize);
-            reorderedFaults[i] = computePageFaults(newOrds, pageSize);
+            List<Integer> docIds = queries.get(i);  // docIds == oldOrds
+            List<Integer> newOrds = mapToNewOrds(docIds, permutation);
+            baselineFaults[i] = computePageFaults(docIds, pageSize);    // before reordering
+            reorderedFaults[i] = computePageFaults(newOrds, pageSize);  // after reordering
         }
 
         double tStat = computePairedTTest(baselineFaults, reorderedFaults);
