@@ -464,7 +464,7 @@ public class NativeEngineKnnVectorQuery extends Query {
 
                 // Write docIds to file for reorder analysis (one file per shard)
                 try {
-                    int shardId = leafReaderContext.ord;
+                    int shardId = knnQuery.getShardId();
                     Path docIdsPath = Path.of("/home/ec2-user/before-reordering/data/query_doc_ids/exactsearcher_docids_shard_" + shardId + ".txt");
 //                    Path docIdsPath = Path.of("/Users/finnrobl/Documents/k-NN-2/sift-binary/query_doc_ids/exactsearcher_docids_shard_" + shardId + ".txt");
                     try (java.io.BufferedWriter writer = java.nio.file.Files.newBufferedWriter(
