@@ -20,7 +20,8 @@ import java.util.List;
  */
 public class ReorderDistanceAnalyzer {
 
-    private static final int DEFAULT_PAGE_SIZE = 50; // vectors per page
+    private static final int PAGE_SIZE_BYTES = 4096;  // 4KB page
+    private static final int READ_AHEAD_BYTES = 262144;  // 256KB read-ahead
 
     public record Stats(double mean, double stdDev, long count, double min, double max) {
         @Override
@@ -117,11 +118,35 @@ public class ReorderDistanceAnalyzer {
     }
 
     /**
-     * Computes number of distinct pages touched by docIds (approximates page faults).
+     * Computes number of distinct pages touched by ordinals.
+     * @param vectorBytes size of one vector in bytes (dimension * 4)
      */
-    public static double computePageFaults(List<Integer> docIds, int pageSize) {
-        if (docIds.isEmpty()) return 0;
-        return docIds.stream().map(d -> d / pageSize).distinct().count();
+    public static double computePageFaults(List<Integer> ordinals, int vectorBytes) {
+        if (ordinals.isEmpty()) return 0;
+        return ordinals.stream()
+            .map(ord -> (ord * vectorBytes) / PAGE_SIZE_BYTES)
+            .distinct()
+            .count();
+    }
+
+    /**
+     * Computes disk IOs needed with SSD read-ahead.
+     * Sorts ordinals, then simulates sequential access where each IO reads readAheadBytes.
+     * @param vectorBytes size of one vector in bytes (dimension * 4)
+     */
+    public static double computeDiskIOs(List<Integer> ordinals, int vectorBytes) {
+        if (ordinals.isEmpty()) return 0;
+        int[] sorted = ordinals.stream().mapToInt(Integer::intValue).sorted().toArray();
+        int ios = 0;
+        long cachedUpToByte = -1;
+        for (int ord : sorted) {
+            long byteOffset = (long) ord * vectorBytes;
+            if (byteOffset > cachedUpToByte) {
+                ios++;
+                cachedUpToByte = byteOffset + READ_AHEAD_BYTES - 1;
+            }
+        }
+        return ios;
     }
 
     /**
@@ -144,14 +169,17 @@ public class ReorderDistanceAnalyzer {
     }
 
     public static void main(String[] args) throws IOException {
-        if (args.length < 2) {
-            System.out.println("Usage: ReorderDistanceAnalyzer <permutation-file> <docids-file> [page-size]");
+        if (args.length < 3) {
+            System.out.println("Usage: ReorderDistanceAnalyzer <permutation-file> <docids-file> <dimension>");
+            System.out.println("  dimension: vector dimensionality (e.g., 128 for SIFT)");
             return;
         }
 
         Path permPath = Path.of(args[0]);
         Path docIdsPath = Path.of(args[1]);
-        int pageSize = args.length >= 3 ? Integer.parseInt(args[2]) : DEFAULT_PAGE_SIZE;
+        int dimension = Integer.parseInt(args[2]);
+        int vectorBytes = dimension * 4;  // 4 bytes per float
+        int vectorsPerPage = PAGE_SIZE_BYTES / vectorBytes;
 
         int[] permutation = loadPermutation(permPath);
 
@@ -180,22 +208,41 @@ public class ReorderDistanceAnalyzer {
         // Compute page faults: baseline (docIds=oldOrds) vs reordered (newOrds)
         double[] baselineFaults = new double[queries.size()];
         double[] reorderedFaults = new double[queries.size()];
+        double[] baselineIOs = new double[queries.size()];
+        double[] reorderedIOs = new double[queries.size()];
+        
         for (int i = 0; i < queries.size(); i++) {
             List<Integer> docIds = queries.get(i);  // docIds == oldOrds
             List<Integer> newOrds = mapToNewOrds(docIds, permutation);
-            baselineFaults[i] = computePageFaults(docIds, pageSize);    // before reordering
-            reorderedFaults[i] = computePageFaults(newOrds, pageSize);  // after reordering
+            baselineFaults[i] = computePageFaults(docIds, vectorBytes);
+            reorderedFaults[i] = computePageFaults(newOrds, vectorBytes);
+            baselineIOs[i] = computeDiskIOs(docIds, vectorBytes);
+            reorderedIOs[i] = computeDiskIOs(newOrds, vectorBytes);
         }
 
         double tStat = computePairedTTest(baselineFaults, reorderedFaults);
         double meanBaseline = java.util.Arrays.stream(baselineFaults).average().orElse(0);
         double meanReordered = java.util.Arrays.stream(reorderedFaults).average().orElse(0);
 
-        System.out.println("\n=== Paired T-Test (Page Faults, pageSize=" + pageSize + ") ===");
+        System.out.println("\n=== Config ===");
+        System.out.println("Dimension: " + dimension + ", Vector size: " + vectorBytes + " bytes");
+        System.out.println("Page size: " + PAGE_SIZE_BYTES + " bytes (" + vectorsPerPage + " vectors/page)");
+        System.out.println("Read-ahead: " + READ_AHEAD_BYTES + " bytes (" + (READ_AHEAD_BYTES / vectorBytes) + " vectors)");
+
+        System.out.println("\n=== Paired T-Test (Page Faults) ===");
         System.out.println("Number of queries: " + queries.size());
         System.out.println("Mean page faults baseline (oldOrds):  " + String.format("%.2f", meanBaseline));
         System.out.println("Mean page faults reordered (newOrds): " + String.format("%.2f", meanReordered));
         System.out.println("t-statistic: " + String.format("%.4f", tStat));
-        System.out.println("(negative t = reordering reduced page faults)");
+
+        double tStatIO = computePairedTTest(baselineIOs, reorderedIOs);
+        double meanBaselineIO = java.util.Arrays.stream(baselineIOs).average().orElse(0);
+        double meanReorderedIO = java.util.Arrays.stream(reorderedIOs).average().orElse(0);
+
+        System.out.println("\n=== Paired T-Test (Disk IOs with read-ahead) ===");
+        System.out.println("Mean disk IOs baseline (oldOrds):  " + String.format("%.2f", meanBaselineIO));
+        System.out.println("Mean disk IOs reordered (newOrds): " + String.format("%.2f", meanReorderedIO));
+        System.out.println("t-statistic: " + String.format("%.4f", tStatIO));
+        System.out.println("\n(negative t = reordering reduced IOs)");
     }
 }
