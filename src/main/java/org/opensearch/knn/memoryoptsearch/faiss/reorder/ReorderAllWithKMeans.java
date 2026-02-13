@@ -278,9 +278,12 @@ public class ReorderAllWithKMeans {
         VectorSimilarityFunction similarityFunction
     ) throws IOException {
         final int numVectors = idMapIndex.getTotalNumberOfVectors();
+        long s_load = System.nanoTime();
 
         System.out.println("Loading vectors from .vec file for K-Means reordering...");
         float[][] vectors = loadVectorsFromVec(directory, targetFiles, fieldName, dimension, fieldNo, segmentName, numVectors, similarityFunction);
+        long e_load = System.nanoTime();
+        System.out.println("vec loading took : " + (e_load - s_load) / 1e6 + "ms");
 
         // Determine number of clusters (k)
         int k = Math.min(DEFAULT_NUM_CLUSTERS, numVectors / 100);
@@ -291,14 +294,22 @@ public class ReorderAllWithKMeans {
         int metricType = (similarityFunction == VectorSimilarityFunction.MAXIMUM_INNER_PRODUCT) 
             ? KMeansClusterer.METRIC_INNER_PRODUCT 
             : KMeansClusterer.METRIC_L2;
+        long s_perm = System.nanoTime();
+
         int[] permutation = ClusterSorter.clusterAndSort(vectors, k, DEFAULT_NUM_ITERATIONS, metricType);
+        long e_perm = System.nanoTime();
+        System.out.println("permutation took : " + (e_perm - s_perm) / 1e6 + "ms");
 
         ReorderOrdMap reorderOrdMap = new ReorderOrdMap(permutation);
         // Transform the faiss index
+        long s_faiss = System.nanoTime();
+
         try (final IndexOutput indexOutput = directory.createOutput(targetFiles.faissIndexFileName + reorderSuffix, IOContext.DEFAULT)) {
             FaissIndexReorderTransformer.transform(idMapIndex, faissIndexInput, indexOutput, reorderOrdMap);
             CodecUtil.writeFooter(indexOutput);
         }
+        long e_faiss = System.nanoTime();
+        System.out.println("faiss id update took : " + (e_faiss - s_faiss) / 1e6 + "ms");
 
         return reorderOrdMap;
     }

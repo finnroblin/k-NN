@@ -321,12 +321,20 @@ public class ReorderAllWithBP {
         final int numVectors = idMapIndex.getTotalNumberOfVectors();
 
         // Load vectors from .vec file
+        long s_load = System.nanoTime();
+
         System.out.println("Loading vectors from .vec file for BP reordering...");
         float[][] vectors = loadVectorsFromVec(directory, targetFiles, fieldName, dimension, fieldNo, segmentName, numVectors, similarityFunction);
 
+        long e_load = System.nanoTime();
+
+        System.out.println("vec loading took : " + (e_load - s_load) / 1e6 + "ms");
         // Compute BP permutation
         System.out.println("Computing BP permutation...");
+        long s_perm = System.nanoTime();
         int[] permutation = BpReorderer.computePermutation(vectors, similarityFunction);
+        long e_perm = System.nanoTime();
+        System.out.println("permutation took : " + (e_perm - s_perm) / 1e6 + "ms");
 
         final ReorderOrdMap reorderOrdMap = new ReorderOrdMap(permutation);
 
@@ -337,10 +345,15 @@ public class ReorderAllWithBP {
         System.out.println("Permutation saved to: " + permutationPath + " (shard=" + shardId + ")");
 
 
+        long s_faiss = System.nanoTime();
         // Transform the faiss index
         try (final IndexOutput indexOutput = directory.createOutput(targetFiles.faissIndexFileName + reorderSuffix, IOContext.DEFAULT)) {
             FaissIndexReorderTransformer.transform(idMapIndex, faissIndexInput, indexOutput, reorderOrdMap);
         }
+
+        long e_faiss = System.nanoTime();
+        System.out.println("faiss id update took : " + (e_faiss - s_faiss) / 1e6 + "ms");
+
 
         return reorderOrdMap;
     }
