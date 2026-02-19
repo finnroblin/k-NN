@@ -25,8 +25,12 @@ public class FaissIdMapIndexReorderer extends FaissIndexReorderTransformer {
         // Write index type
         writeIndexType(indexType, indexOutput);
 
-        // Copy header
-        copyBinaryCommonHeader(actualIndex, indexOutput);
+        // Copy header - use correct format based on index type
+        if (indexType.equals(FaissIdMapIndex.IXMP)) {
+            copyCommonHeader(actualIndex, indexOutput);
+        } else {
+            copyBinaryCommonHeader(actualIndex, indexOutput);
+        }
 
         // Transform nested index
         transform(actualIndex.getNestedIndex(), indexInput, indexOutput, reorderOrdMap);

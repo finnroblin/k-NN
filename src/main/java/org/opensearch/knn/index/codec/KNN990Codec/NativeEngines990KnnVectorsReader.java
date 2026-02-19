@@ -39,6 +39,7 @@ import org.apache.lucene.util.IOSupplier;
 import org.apache.lucene.util.IOUtils;
 import org.opensearch.common.UUIDs;
 import org.opensearch.knn.common.FieldInfoExtractor;
+import org.opensearch.knn.index.codec.KNN80Codec.KNN80CompoundDirectory;
 import org.opensearch.knn.index.codec.util.KNNCodecUtil;
 import org.opensearch.knn.index.codec.util.NativeMemoryCacheKeyHelper;
 import org.opensearch.knn.index.engine.KNNEngine;
@@ -84,7 +85,7 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
 
     public NativeEngines990KnnVectorsReader(final SegmentReadState state, final FlatVectorsReader flatVectorsReader) throws IOException {
         if (Files.exists(Path.of("/tmp/dododo"))) {
-            final Path directory = (((FSDirectory) FilterDirectory.unwrap(state.directory))).getDirectory();
+            final Path directory = resolveDirectoryPath(state.directory);
             System.out.println("!!!!!!!!!!!!!!!! (native non-reordered reader) Original directory -> " + directory);
             final String afterReorderingDirectory =
                 directory.toAbsolutePath().toString().replaceAll("before-reordering", "before-reordering/data/after-reordering");
@@ -125,61 +126,7 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
      */
     @Override
     public FloatVectorValues getFloatVectorValues(final String field) throws IOException {
-        FloatVectorValues values = flatVectorsReader.getFloatVectorValues(field);
-        return new FloatVectorValues() {
-            @Override
-            public int dimension() {
-                return values.dimension();
-            }
-
-            @Override
-            public int size() {
-                return values.size();
-            }
-
-            @Override
-            public float[] vectorValue(int ord) throws IOException {
-                return values.vectorValue(ord);
-            }
-
-            @Override
-            public FloatVectorValues copy() throws IOException {
-                return values.copy();
-            }
-
-            @Override
-            public DocIndexIterator iterator() {
-                DocIndexIterator delegate = values.iterator();
-                return new DocIndexIterator() {
-                    @Override
-                    public int index() {
-                        int ord = delegate.index();
-//                        System.out.println("[NON-REORDERED] DocId: " + docID() + " -> Internal Vector Ord: " + ord);
-                        return ord;
-                    }
-
-                    @Override
-                    public int docID() {
-                        return delegate.docID();
-                    }
-
-                    @Override
-                    public int nextDoc() throws IOException {
-                        return delegate.nextDoc();
-                    }
-
-                    @Override
-                    public int advance(int target) throws IOException {
-                        return delegate.advance(target);
-                    }
-
-                    @Override
-                    public long cost() {
-                        return delegate.cost();
-                    }
-                };
-            }
-        };
+        return flatVectorsReader.getFloatVectorValues(field);
     }
 
     /**
@@ -478,5 +425,20 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
         public boolean isSet() {
             return vectorSearcher != null;
         }
+    }
+
+    private static Path resolveDirectoryPath(Directory directory) {
+        Directory unwrapped = FilterDirectory.unwrap(directory);
+        if (unwrapped instanceof FSDirectory) {
+            return ((FSDirectory) unwrapped).getDirectory();
+        }
+        if (unwrapped instanceof KNN80CompoundDirectory) {
+            Directory inner = ((KNN80CompoundDirectory) unwrapped).getDir();
+            Directory innerUnwrapped = FilterDirectory.unwrap(inner);
+            if (innerUnwrapped instanceof FSDirectory) {
+                return ((FSDirectory) innerUnwrapped).getDirectory();
+            }
+        }
+        throw new IllegalStateException("Cannot resolve filesystem path from directory: " + unwrapped.getClass().getName());
     }
 }

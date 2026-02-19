@@ -22,6 +22,7 @@ import org.apache.lucene.store.FileDataHint;
 import org.apache.lucene.store.FileTypeHint;
 import org.apache.lucene.store.FilterDirectory;
 import org.apache.lucene.store.IOContext;
+import org.opensearch.knn.index.codec.KNN80Codec.KNN80CompoundDirectory;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.MMapDirectory;
 import org.apache.lucene.util.IOUtils;
@@ -62,7 +63,7 @@ public class ReorderedLucene99FlatVectorsReader111 extends FlatVectorsReader {
         super(scorer);
 
         if (useReorderedSuffix == false && Files.exists(Path.of("/tmp/dododo"))) {
-            final Path directory = (((FSDirectory) FilterDirectory.unwrap(state.directory))).getDirectory();
+            final Path directory = resolveDirectoryPath(state.directory);
             System.out.println("############### (reordered reader) Original directory -> " + directory);
             final String afterReorderingDirectory =
                 directory.toAbsolutePath().toString().replaceAll("before-reordering", "before-reordering/data/after-reordering");
@@ -90,10 +91,45 @@ public class ReorderedLucene99FlatVectorsReader111 extends FlatVectorsReader {
         }
     }
 
+    private static Path resolveDirectoryPath(Directory directory) {
+        Directory unwrapped = FilterDirectory.unwrap(directory);
+        if (unwrapped instanceof FSDirectory) {
+            return ((FSDirectory) unwrapped).getDirectory();
+        }
+        if (unwrapped instanceof KNN80CompoundDirectory) {
+            Directory inner = ((KNN80CompoundDirectory) unwrapped).getDir();
+            Directory innerUnwrapped = FilterDirectory.unwrap(inner);
+            if (innerUnwrapped instanceof FSDirectory) {
+                return ((FSDirectory) innerUnwrapped).getDirectory();
+            }
+        }
+        throw new IllegalStateException("Cannot resolve filesystem path from directory: " + unwrapped.getClass().getName());
+    }
+
     private IndexInput openDataInput(SegmentReadState state, int versionMeta, String fileExtension, String codecName, IOContext context)
         throws IOException {
         String fileName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, fileExtension);
-        final Directory directory = afterReorderingMMapDirectory != null ? afterReorderingMMapDirectory : state.directory;
+        
+        Directory directory = state.directory;
+        if (afterReorderingMMapDirectory != null) {
+            // Check if the file exists in the custom directory first
+            try {
+                String[] files = afterReorderingMMapDirectory.listAll();
+                boolean fileExists = false;
+                for (String file : files) {
+                    if (file.equals(fileName)) {
+                        fileExists = true;
+                        break;
+                    }
+                }
+                if (fileExists) {
+                    directory = afterReorderingMMapDirectory;
+                }
+            } catch (IOException e) {
+                // Fall back to state.directory
+            }
+        }
+        
         IndexInput in = directory.openInput(fileName, context);
         boolean success = false;
         try {
@@ -134,7 +170,27 @@ public class ReorderedLucene99FlatVectorsReader111 extends FlatVectorsReader {
     }
 
     private int readMetadata(SegmentReadState state) throws IOException {
-        final Directory directory = afterReorderingMMapDirectory != null ? afterReorderingMMapDirectory : state.directory;
+        Directory directory = state.directory;
+        if (afterReorderingMMapDirectory != null) {
+            // Check if the file exists in the custom directory first
+            String metaFileName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, META_EXTENSION + customSuffix);
+            try {
+                String[] files = afterReorderingMMapDirectory.listAll();
+                boolean fileExists = false;
+                for (String file : files) {
+                    if (file.equals(metaFileName)) {
+                        fileExists = true;
+                        break;
+                    }
+                }
+                if (fileExists) {
+                    directory = afterReorderingMMapDirectory;
+                }
+            } catch (IOException e) {
+                // Fall back to state.directory
+            }
+        }
+        
         String metaFileName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, META_EXTENSION + customSuffix);
         int versionMeta = -1;
         try (ChecksumIndexInput meta = directory.openChecksumInput(metaFileName)) {
