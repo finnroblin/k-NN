@@ -28,6 +28,8 @@ import org.opensearch.knn.index.codec.nativeindex.NativeIndexBuildStrategyFactor
 import org.opensearch.knn.index.codec.nativeindex.NativeIndexWriter;
 import org.opensearch.knn.index.quantizationservice.QuantizationService;
 import org.opensearch.knn.index.vectorvalues.KNNVectorValues;
+import org.opensearch.knn.memoryoptsearch.faiss.reorder.SegmentReorderService;
+import org.opensearch.knn.memoryoptsearch.faiss.reorder.VectorReorderStrategy;
 import org.opensearch.knn.plugin.stats.KNNGraphValue;
 import org.opensearch.knn.quantization.models.quantizationParams.QuantizationParams;
 import org.opensearch.knn.quantization.models.quantizationState.QuantizationState;
@@ -55,6 +57,7 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
     private boolean finished;
     private final Integer approximateThreshold;
     private final NativeIndexBuildStrategyFactory nativeIndexBuildStrategyFactory;
+    private final VectorReorderStrategy reorderStrategy;
 
     public NativeEngines990KnnVectorsWriter(
         SegmentWriteState segmentWriteState,
@@ -62,10 +65,21 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
         Integer approximateThreshold,
         NativeIndexBuildStrategyFactory nativeIndexBuildStrategyFactory
     ) {
+        this(segmentWriteState, flatVectorsWriter, approximateThreshold, nativeIndexBuildStrategyFactory, null);
+    }
+
+    public NativeEngines990KnnVectorsWriter(
+        SegmentWriteState segmentWriteState,
+        FlatVectorsWriter flatVectorsWriter,
+        Integer approximateThreshold,
+        NativeIndexBuildStrategyFactory nativeIndexBuildStrategyFactory,
+        VectorReorderStrategy reorderStrategy
+    ) {
         this.segmentWriteState = segmentWriteState;
         this.flatVectorsWriter = flatVectorsWriter;
         this.approximateThreshold = approximateThreshold;
         this.nativeIndexBuildStrategyFactory = nativeIndexBuildStrategyFactory;
+        this.reorderStrategy = reorderStrategy;
     }
 
     /**
@@ -129,6 +143,23 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
             long time_in_millis = stopWatch.stop().totalTime().millis();
             KNNGraphValue.REFRESH_TOTAL_TIME_IN_MILLIS.incrementBy(time_in_millis);
             log.debug("Flush took {} ms for vector field [{}]", time_in_millis, fieldInfo.getName());
+
+            // Post-write reorder: rewrite .vec and .faiss with optimized vector ordering
+            maybeReorderSegmentFiles(fieldInfo, totalLiveDocs);
+        }
+    }
+
+    private void maybeReorderSegmentFiles(FieldInfo fieldInfo, int totalLiveDocs) {
+        if (reorderStrategy == null || totalLiveDocs < SegmentReorderService.MIN_VECTORS_FOR_REORDER) {
+            return;
+        }
+        try {
+            StopWatch reorderWatch = new StopWatch().start();
+            new SegmentReorderService(segmentWriteState, fieldInfo, reorderStrategy).reorderSegmentFiles();
+            long reorderMs = reorderWatch.stop().totalTime().millis();
+            log.info("Reorder took {} ms for field [{}] ({} vectors)", reorderMs, fieldInfo.getName(), totalLiveDocs);
+        } catch (Exception e) {
+            log.error("Reorder failed for field [{}], segment will remain un-reordered", fieldInfo.getName(), e);
         }
     }
 
