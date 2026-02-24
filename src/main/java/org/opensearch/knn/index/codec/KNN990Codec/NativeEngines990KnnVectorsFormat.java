@@ -100,8 +100,7 @@ public class NativeEngines990KnnVectorsFormat extends KnnVectorsFormat {
             final FlatVectorsReader reorderedFlatVectorsReader =
                 new ReorderedLucene99FlatVectorsReader111(state, FlatVectorScorerUtil.getLucene99FlatVectorsScorer());
             return new NativeEngines990KnnVectorsReader(state, reorderedFlatVectorsReader);
-        } catch (org.apache.lucene.index.CorruptIndexException e) {
-            e.printStackTrace();
+        } catch (org.apache.lucene.index.CorruptIndexException | NullPointerException e) {
             return new NativeEngines990KnnVectorsReader(state, flatVectorsFormat.fieldsReader(state));
         }
     }
