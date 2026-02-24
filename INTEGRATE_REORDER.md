@@ -102,20 +102,33 @@ Also include test plans.
 
 ## Recommended Integration Point
 
-**Primary: Flush path** (`NativeEngines990KnnVectorsWriter.flush()`)
+**Both flush and merge paths**, post-write reorder with mmap-backed vector access.
 
-Rationale:
-- Flush is where new segment files (`.vec`, `.faiss`) are first written to disk
-- Reordering the `.vec` and `.faiss` files at flush time means every segment is reordered before it ever becomes searchable
-- The flat vectors are already materialized in memory during flush (via `NativeEngineFieldVectorsWriter.getVectors()`), so computing a reorder permutation is cheap relative to the I/O
-- Flush happens on the indexing thread, so adding reorder latency here is acceptable (it's already blocking)
+**Approach: Post-write reorder using mmap'd `FloatVectorValues` from `Lucene99FlatVectorsReader`**
 
-**Secondary: Merge path** (`NativeEngines990KnnVectorsWriter.mergeOneField()`)
+After both `.vec` and `.faiss` files are written by the normal flush/merge pipeline:
+1. Open the `.vec` file via `Lucene99FlatVectorsReader` → returns mmap-backed `FloatVectorValues`
+2. Pass `FloatVectorValues` directly to `BpVectorReorderer.computeValueMap()` — vectors are
+   accessed via `vectorValue(int ord)` random access on the mmap'd file, never copied to heap
+3. Each BP worker thread calls `vectors.copy()` which creates another mmap view (see
+   `BpVectorReorderer.PerThreadState`, line ~107 of `BpVectorReorderer.java`)
+4. Only heap cost: `2 * 4 * numVectors` bytes for `sortedIds[]` + `biases[]` arrays
+   (validated by `BpVectorReorderer.docRAMRequirements()`)
+5. Apply permutation: rewrite `.vec` via `ReorderedFlatVectorsWriter`, rewrite `.faiss` via
+   `FaissIndexReorderTransformer`
 
-Rationale:
-- Merged segments are also new segments that need reordering
-- Without merge-path reordering, a force-merged segment would lose its reorder properties
-- Merge already reads all vectors from source segments, so the data is available
+**Why this works for both flush and merge:**
+- Flush: `flatVectorsWriter.flush()` writes `.vec` → `NativeIndexWriter.flushIndex()` writes `.faiss` → reorder both
+- Merge: `flatVectorsWriter.mergeOneField()` writes merged `.vec` → `NativeIndexWriter.mergeIndex()` writes `.faiss` → reorder both
+- In both cases the `.vec` file exists on disk before reorder runs, so mmap works identically
+
+**Why NOT pre-write reorder:**
+- `flatVectorsWriter.flush()` writes `.vec` from the in-memory buffer — intercepting this requires
+  modifying Lucene's `FlatVectorsWriter` contract
+- The FAISS graph build (`MemOptimizedNativeIndexBuildStrategy`) inserts vectors with their doc IDs
+  via `JNIService.insertToIndex(docIds, vectorAddress, ...)` — reordering the input iterator would
+  change the doc-id-to-vector mapping, requiring careful coordination
+- Post-write reorder is simpler and uses existing `ReorderedFlatVectorsWriter` + `FaissIndexReorderTransformer`
 
 **Not recommended: Refresh path**
 - Refresh does not write segment files; it only opens readers
@@ -129,6 +142,8 @@ Rationale:
 ### TODO 1: Define `VectorReorderStrategy` interface (pluggable reordering)
 
 Create a strategy interface so BP and KMeans (and future strategies) are interchangeable.
+The interface accepts `FloatVectorValues` (not `float[][]`) so implementations can work with
+mmap-backed vectors without loading everything into heap.
 
 **File:** `k-NN/src/main/java/org/opensearch/knn/memoryoptsearch/faiss/reorder/VectorReorderStrategy.java`
 
@@ -136,22 +151,65 @@ Create a strategy interface so BP and KMeans (and future strategies) are interch
 public interface VectorReorderStrategy {
     /**
      * Compute a permutation array mapping new ord -> old ord.
-     * @param vectors the float vectors to reorder
+     * @param vectors FloatVectorValues — may be mmap-backed (from Lucene99FlatVectorsReader)
+     *                or heap-backed (from FloatVectorValues.fromFloats())
      * @param numThreads number of CPU threads to use
      * @return permutation array where permutation[newOrd] = oldOrd
      */
-    int[] computePermutation(float[][] vectors, int numThreads);
+    int[] computePermutation(FloatVectorValues vectors, int numThreads);
 }
 ```
 
-### TODO 2: Implement `BipartiteReorderStrategy`
+### TODO 2: Implement `BipartiteReorderStrategy` (mmap-friendly)
 
-Wrap existing `BpReorderer` behind the new interface.
+Wrap Lucene's `BpVectorReorderer` behind the new interface. The key insight is that
+`BpVectorReorderer.computeValueMap()` accepts `FloatVectorValues` directly — it does NOT
+require all vectors in a `float[][]` on heap. It accesses vectors via random-access
+`vectorValue(int ord)` calls, and each thread gets its own `vectors.copy()` (another mmap view).
+
+**Memory overhead:** Only `2 * 4 bytes * numVectors` for the `sortedIds` + `biases` arrays
+(checked by `BpVectorReorderer.docRAMRequirements()`). The vectors themselves stay on disk
+via mmap.
 
 **File:** `k-NN/src/main/java/org/opensearch/knn/memoryoptsearch/faiss/reorder/bpreorder/BipartiteReorderStrategy.java`
 
-- Delegates to existing `BpReorderer.computePermutation()`
-- Passes through `numThreads` to the BP algorithm's `ForkJoinPool`
+```java
+public class BipartiteReorderStrategy implements VectorReorderStrategy {
+    @Override
+    public int[] computePermutation(FloatVectorValues vectors, int numThreads) {
+        // BpVectorReorderer reads vectors via vectorValue(ord) — works with mmap-backed FloatVectorValues
+        // See: k-NN/src/main/java/org/apache/lucene/misc/index/BpVectorReorderer.java
+        //   - PerThreadState calls vectors.copy() per thread (line ~107) — each gets own mmap view
+        //   - Hot loop: vectors.vectorValue(ids[i]) (line ~370 in ComputeBiasTask.compute())
+        //   - RAM check: docRAMRequirements() only accounts for int[] + float[] metadata, not vectors
+        BpVectorReorderer reorderer = new BpVectorReorderer("vectors");
+        reorderer.setMinPartitionSize(1);
+        ForkJoinPool pool = new ForkJoinPool(numThreads);
+        try {
+            TaskExecutor executor = new TaskExecutor(pool);
+            Sorter.DocMap map = reorderer.computeValueMap(
+                vectors, VectorSimilarityFunction.EUCLIDEAN, executor
+            );
+            int[] permutation = new int[vectors.size()];
+            for (int i = 0; i < permutation.length; i++) {
+                permutation[i] = map.newToOld(i);
+            }
+            return permutation;
+        } finally {
+            pool.shutdown();
+        }
+    }
+}
+```
+
+**Contrast with current `BpReorderer` (heap-based):**
+The existing `bpreorder/BpReorderer.java` forces all vectors into heap:
+```java
+// Current approach — loads ALL vectors into Java heap:
+FloatVectorValues fvv = FloatVectorValues.fromFloats(Arrays.asList(vectors), dim);
+```
+The new strategy avoids this by passing the `FloatVectorValues` from `Lucene99FlatVectorsReader`
+directly, which is backed by mmap'd `.vec` file on disk.
 
 ### TODO 3: Implement `KMeansReorderStrategy`
 
@@ -161,6 +219,8 @@ Wrap existing `ClusterSorter` behind the new interface.
 
 - Delegates to existing `ClusterSorter.clusterAndSort()`
 - Uses `FaissKMeansService` (JNI) when available, falls back to `KMeansClusterer` (pure Java)
+- Note: KMeans currently requires `float[][]` in heap (JNI and pure-Java both need contiguous
+  vector data). Future optimization: stream vectors through JNI in batches.
 
 ### TODO 4: Create `SegmentReorderService`
 
@@ -170,8 +230,8 @@ Orchestrator that decides whether to reorder and applies the reorder to `.vec` a
 
 Responsibilities:
 - Check if segment size > 10k vectors threshold (configurable constant)
-- Extract vectors from the just-written `.vec` file (or from the in-memory buffer during flush)
-- Call `VectorReorderStrategy.computePermutation()`
+- Open a `Lucene99FlatVectorsReader` on the just-written `.vec` file to get mmap-backed `FloatVectorValues`
+- Call `VectorReorderStrategy.computePermutation(floatVectorValues, numThreads)` — no heap copy for BP
 - Build `ReorderOrdMap` from the permutation
 - Rewrite `.vec` file in reordered order using `ReorderedFlatVectorsWriter`
 - Rewrite `.faiss` file using `FaissIndexReorderTransformer` + the appropriate `FaissIndexReorderer` (HNSW, flat, etc.)
@@ -183,15 +243,33 @@ private static final int MIN_VECTORS_FOR_REORDER = 10_000;
 private static final int DEFAULT_REORDER_THREADS = 4; // configurable
 ```
 
-### TODO 5: Integrate into flush path
+### TODO 5: Integrate into flush path (mmap-based, post-write reorder)
 
 **File to modify:** `NativeEngines990KnnVectorsWriter.flush()`
 
-After the existing `writer.flushIndex()` call completes (which writes `.vec` and `.faiss`), add:
+The integration happens AFTER both `.vec` and `.faiss` are written. The sequence in `flush()` is:
+
+```
+flatVectorsWriter.flush(maxDoc, sortMap)   → writes .vec to disk
+writer.flushIndex(knnVectorValuesSupplier) → builds FAISS graph, writes .faiss to disk
+// ← INSERT REORDER HERE
+```
+
+The reorder step:
+1. Open the just-written `.vec` via `Lucene99FlatVectorsReader` → get mmap-backed `FloatVectorValues`
+2. Pass `FloatVectorValues` to `VectorReorderStrategy.computePermutation()` — BP reads vectors
+   via `vectorValue(ord)` from mmap, never loads all vectors into heap
+3. Build `ReorderOrdMap` from permutation
+4. Rewrite `.vec` in reordered order via `ReorderedFlatVectorsWriter` (reads from mmap reader, writes new file)
+5. Rewrite `.faiss` via `FaissIndexReorderTransformer` (remaps HNSW neighbor lists)
+6. Atomic rename new files over originals
 
 ```java
-// After writer.flushIndex() succeeds:
+// In NativeEngines990KnnVectorsWriter.flush(), after writer.flushIndex():
 if (totalLiveDocs >= SegmentReorderService.MIN_VECTORS_FOR_REORDER) {
+    // Opens .vec via Lucene99FlatVectorsReader (mmap-backed FloatVectorValues)
+    // BP only needs 2*4*N bytes heap for metadata (sortedIds + biases arrays)
+    // Vectors stay on disk, accessed via vectorValue(ord) random access
     SegmentReorderService reorderService = new SegmentReorderService(
         segmentWriteState, fieldInfo, reorderStrategy
     );
@@ -199,24 +277,39 @@ if (totalLiveDocs >= SegmentReorderService.MIN_VECTORS_FOR_REORDER) {
 }
 ```
 
-Alternatively (preferred approach): integrate reordering INSIDE the flush, reordering the in-memory vectors before they are written. This avoids a read-rewrite cycle:
-- After `flatVectorsWriter.flush()` writes the `.vec`, but before `writer.flushIndex()` builds the `.faiss`:
-  1. Read vectors from the in-memory `field.getVectors()` map
-  2. Compute permutation via `VectorReorderStrategy`
-  3. Create a reordered `KNNVectorValues` wrapper that yields vectors in permuted order
-  4. Pass the reordered values to `writer.flushIndex()`
-  5. Also rewrite the `.vec` in reordered order (or flush it in reordered order from the start)
+**Why post-write reorder (not pre-write):**
+- `flatVectorsWriter.flush()` writes `.vec` from the in-memory buffer — we can't easily intercept this
+- The `.faiss` graph is built by `MemOptimizedNativeIndexBuildStrategy.buildAndWriteIndex()` which
+  streams vectors via `KNNVectorValues` iterator and inserts into FAISS via JNI (`JNIService.insertToIndex()`)
+  — reordering the iterator would change doc-id-to-vector mapping in the graph
+- Post-write reorder is simpler: rewrite both files with consistent permutation using existing
+  `ReorderedFlatVectorsWriter` + `FaissIndexReorderTransformer` infrastructure
 
-Decision: The second approach (reorder before writing) is cleaner but requires modifying how `flatVectorsWriter.flush()` works. The first approach (rewrite after writing) is simpler to implement and uses existing `ReorderedFlatVectorsWriter` + `FaissIndexReorderTransformer` infrastructure. **Start with the post-write rewrite approach.**
+**Memory profile during reorder (BP, 1M vectors, 128-dim):**
+- Vectors: 0 bytes heap (mmap from `.vec` file, ~512MB on disk)
+- BP metadata: `2 * 4 * 1M` = ~8MB heap (sortedIds + biases)
+- Per-thread state: `3 * 128 * 4` bytes per thread (centroids + scratch) = negligible
+- Total heap: ~8MB regardless of vector count or dimension
 
-### TODO 6: Integrate into merge path
+### TODO 6: Integrate into merge path (mmap-based, post-write reorder)
 
 **File to modify:** `NativeEngines990KnnVectorsWriter.mergeOneField()`
 
-Same pattern as flush: after `writer.mergeIndex()` completes, apply reordering if the merged segment exceeds the threshold.
+Same pattern as flush. The merge sequence is:
+
+```
+flatVectorsWriter.mergeOneField(fieldInfo, mergeState)  → writes merged .vec (streams from source segments)
+writer.mergeIndex(knnVectorValuesSupplier, totalLiveDocs) → builds FAISS graph, writes .faiss
+// ← INSERT REORDER HERE
+```
+
+During merge, source segment vectors are NOT loaded into heap — they're read via
+`MergedVectorValues.mergeFloatVectorValues()` which is a lazy iterator over the source
+segments' on-disk `.vec` files. After the merged `.vec` is written, we open it with
+`Lucene99FlatVectorsReader` (mmap) and pass to BP — same zero-heap-copy approach as flush.
 
 ```java
-// After writer.mergeIndex() succeeds:
+// In NativeEngines990KnnVectorsWriter.mergeOneField(), after writer.mergeIndex():
 if (totalLiveDocs >= SegmentReorderService.MIN_VECTORS_FOR_REORDER) {
     SegmentReorderService reorderService = new SegmentReorderService(
         segmentWriteState, fieldInfo, reorderStrategy
@@ -224,6 +317,12 @@ if (totalLiveDocs >= SegmentReorderService.MIN_VECTORS_FOR_REORDER) {
     reorderService.reorderSegmentFiles();
 }
 ```
+
+**Force merge note:** A `_forcemerge?max_num_segments=1` on a 10M vector index will:
+1. Stream all vectors from source segments → write merged `.vec` (disk-to-disk, no heap)
+2. Build FAISS HNSW graph in native memory (this IS fully in native memory)
+3. Reorder: open merged `.vec` via mmap, compute BP permutation (~80MB heap for metadata),
+   rewrite `.vec` and `.faiss` with permutation
 
 ### TODO 7: Wire up strategy selection
 
