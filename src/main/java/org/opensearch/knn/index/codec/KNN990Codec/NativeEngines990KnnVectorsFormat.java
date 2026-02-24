@@ -26,6 +26,7 @@ import org.opensearch.knn.index.KNNSettings;
 import org.opensearch.knn.index.codec.nativeindex.NativeIndexBuildStrategyFactory;
 import org.opensearch.knn.index.engine.KNNEngine;
 import org.opensearch.knn.memoryoptsearch.faiss.reorder.ReorderedLucene99FlatVectorsReader111;
+import org.opensearch.knn.memoryoptsearch.faiss.reorder.VectorReorderStrategy;
 
 import java.io.IOException;
 
@@ -42,6 +43,7 @@ public class NativeEngines990KnnVectorsFormat extends KnnVectorsFormat {
     private static final String FORMAT_NAME = "NativeEngines990KnnVectorsFormat";
     private final int approximateThreshold;
     private final NativeIndexBuildStrategyFactory nativeIndexBuildStrategyFactory;
+    private final VectorReorderStrategy reorderStrategy;
 
     public NativeEngines990KnnVectorsFormat() {
         this(KNNSettings.INDEX_KNN_ADVANCED_APPROXIMATE_THRESHOLD_DEFAULT_VALUE);
@@ -55,9 +57,19 @@ public class NativeEngines990KnnVectorsFormat extends KnnVectorsFormat {
         int approximateThreshold,
         final NativeIndexBuildStrategyFactory nativeIndexBuildStrategyFactory
     ) {
+        this(flatVectorsFormat, approximateThreshold, nativeIndexBuildStrategyFactory, null);
+    }
+
+    public NativeEngines990KnnVectorsFormat(
+        final FlatVectorsFormat flatVectorsFormat,
+        int approximateThreshold,
+        final NativeIndexBuildStrategyFactory nativeIndexBuildStrategyFactory,
+        final VectorReorderStrategy reorderStrategy
+    ) {
         super(FORMAT_NAME);
         this.approximateThreshold = approximateThreshold;
         this.nativeIndexBuildStrategyFactory = nativeIndexBuildStrategyFactory;
+        this.reorderStrategy = reorderStrategy;
     }
 
     /**
@@ -69,9 +81,10 @@ public class NativeEngines990KnnVectorsFormat extends KnnVectorsFormat {
     public KnnVectorsWriter fieldsWriter(final SegmentWriteState state) throws IOException {
         return new NativeEngines990KnnVectorsWriter(
             state,
-                                                    flatVectorsFormat.fieldsWriter(state),
-                                                    approximateThreshold,
-                                                    nativeIndexBuildStrategyFactory
+            flatVectorsFormat.fieldsWriter(state),
+            approximateThreshold,
+            nativeIndexBuildStrategyFactory,
+            reorderStrategy
         );
     }
 

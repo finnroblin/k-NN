@@ -205,6 +205,9 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
         long time_in_millis = stopWatch.stop().totalTime().millis();
         KNNGraphValue.MERGE_TOTAL_TIME_IN_MILLIS.incrementBy(time_in_millis);
         log.debug("Merge took {} ms for vector field [{}]", time_in_millis, fieldInfo.getName());
+
+        // Post-write reorder: rewrite .vec and .faiss with optimized vector ordering
+        maybeReorderSegmentFiles(fieldInfo, totalLiveDocs);
     }
 
     /**
