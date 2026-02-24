@@ -15,7 +15,9 @@ import lombok.extern.log4j.Log4j2;
 import org.apache.lucene.codecs.KnnFieldVectorsWriter;
 import org.apache.lucene.codecs.KnnVectorsWriter;
 import org.apache.lucene.codecs.hnsw.FlatVectorsWriter;
+import org.apache.lucene.index.DocsWithFieldSet;
 import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.FloatVectorValues;
 import org.apache.lucene.index.MergeState;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.Sorter;
@@ -28,6 +30,7 @@ import org.opensearch.knn.index.codec.nativeindex.NativeIndexBuildStrategyFactor
 import org.opensearch.knn.index.codec.nativeindex.NativeIndexWriter;
 import org.opensearch.knn.index.quantizationservice.QuantizationService;
 import org.opensearch.knn.index.vectorvalues.KNNVectorValues;
+import org.opensearch.knn.index.vectorvalues.KNNVectorValuesFactory;
 import org.opensearch.knn.memoryoptsearch.faiss.reorder.SegmentReorderService;
 import org.opensearch.knn.memoryoptsearch.faiss.reorder.VectorReorderStrategy;
 import org.opensearch.knn.plugin.stats.KNNGraphValue;
@@ -39,6 +42,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
+import static org.apache.lucene.search.DocIdSetIterator.NO_MORE_DOCS;
 import static org.opensearch.knn.common.FieldInfoExtractor.extractVectorDataType;
 import static org.opensearch.knn.index.vectorvalues.KNNVectorValuesFactory.getKNNVectorValuesSupplierForMerge;
 import static org.opensearch.knn.index.vectorvalues.KNNVectorValuesFactory.getVectorValuesSupplier;
@@ -143,23 +147,6 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
             long time_in_millis = stopWatch.stop().totalTime().millis();
             KNNGraphValue.REFRESH_TOTAL_TIME_IN_MILLIS.incrementBy(time_in_millis);
             log.debug("Flush took {} ms for vector field [{}]", time_in_millis, fieldInfo.getName());
-
-            // Post-write reorder: rewrite .vec and .faiss with optimized vector ordering
-            maybeReorderSegmentFiles(fieldInfo, totalLiveDocs);
-        }
-    }
-
-    private void maybeReorderSegmentFiles(FieldInfo fieldInfo, int totalLiveDocs) {
-        if (reorderStrategy == null || totalLiveDocs < SegmentReorderService.MIN_VECTORS_FOR_REORDER) {
-            return;
-        }
-        try {
-            StopWatch reorderWatch = new StopWatch().start();
-            new SegmentReorderService(segmentWriteState, fieldInfo, reorderStrategy).reorderSegmentFiles();
-            long reorderMs = reorderWatch.stop().totalTime().millis();
-            log.info("Reorder took {} ms for field [{}] ({} vectors)", reorderMs, fieldInfo.getName(), totalLiveDocs);
-        } catch (Exception e) {
-            log.error("Reorder failed for field [{}], segment will remain un-reordered", fieldInfo.getName(), e);
         }
     }
 
@@ -205,9 +192,6 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
         long time_in_millis = stopWatch.stop().totalTime().millis();
         KNNGraphValue.MERGE_TOTAL_TIME_IN_MILLIS.incrementBy(time_in_millis);
         log.debug("Merge took {} ms for vector field [{}]", time_in_millis, fieldInfo.getName());
-
-        // Post-write reorder: rewrite .vec and .faiss with optimized vector ordering
-        maybeReorderSegmentFiles(fieldInfo, totalLiveDocs);
     }
 
     /**
