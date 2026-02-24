@@ -375,11 +375,37 @@ For now: use `ForkJoinPool` with `DEFAULT_REORDER_THREADS` parallelism, matching
 
 ### Unit Tests
 
-**TODO 11: `VectorReorderStrategyTests`**
-- Test `BipartiteReorderStrategy.computePermutation()` produces a valid permutation (all ords present, no duplicates)
-- Test `KMeansReorderStrategy.computePermutation()` produces a valid permutation
-- Test with edge cases: exactly 10k vectors, 10001 vectors, 1 vector, 0 vectors
-- Test that permutation improves locality (vectors in same cluster are adjacent)
+**TODO 11a: `BpReordererTests`** ✅ DONE
+- Test `BpReorderer.computePermutation(float[][])` produces a valid permutation (all ords present, no duplicates)
+- Test with small input (2 vectors), identical vectors
+- Test that BP groups well-separated clusters (>90% same-cluster adjacency)
+
+**TODO 11b: `BipartiteReorderStrategyTests`**
+- Test `BipartiteReorderStrategy.computePermutation(FloatVectorValues, numThreads)` — the new mmap-friendly interface
+- Create `FloatVectorValues` via `FloatVectorValues.fromFloats()` (heap-backed, simulates mmap contract)
+- Verify valid permutation (all ords present, no duplicates)
+- Verify clustering quality: interleaved 2-cluster input → >90% same-cluster adjacency after reorder
+- Test with `numThreads=1` and `numThreads=4` — both produce valid permutations
+- Edge case: exactly 2 vectors (minimum for BP)
+
+**TODO 11c: `KMeansReorderStrategyTests`**
+- Test `KMeansReorderStrategy.computePermutation(FloatVectorValues, numThreads)` — the new interface
+- Create `FloatVectorValues` via `FloatVectorValues.fromFloats()`
+- Verify valid permutation (all ords present, no duplicates)
+- Verify clustering quality: interleaved 3-cluster input → >80% same-cluster adjacency
+- Test with custom k and niter parameters
+- Edge case: k > numVectors (should cap k at numVectors)
+- Must set `kmeans.useJni=false` to avoid JNI dependency in unit tests
+
+**TODO 11d: `ClusterSorterTests`** ✅ DONE
+- Test `ClusterSorter.sortByCluster()` groups by cluster, sorts by distance within cluster
+- Test `KMeansClusterer.cluster()` produces valid assignments and non-negative distances
+- Test `ClusterSorter.clusterAndSort()` end-to-end with pure Java path
+
+**TODO 11e: `ReorderOrdMapTests`** ✅ DONE
+- Test newOrd2Old → oldOrd2New inversion
+- Test round-trip: `oldOrd2New[newOrd2Old[i]] == i`
+- Edge cases: single element, identity, reverse
 
 **TODO 12: `SegmentReorderServiceTests`**
 - Test that segments below 10k threshold are NOT reordered
@@ -414,6 +440,40 @@ For now: use `ForkJoinPool` with `DEFAULT_REORDER_THREADS` parallelism, matching
 - Configure index with BP reorder strategy → verify BP is used
 - Configure index with KMeans reorder strategy → verify KMeans is used
 - Configure index with "none" → verify no reordering
+
+**TODO 19: `SegmentReorderService` integration test (manual / `./gradlew run`)**
+
+This tests the full orchestration: flush/merge → reorder → search. Requires a running OpenSearch
+instance with the k-NN plugin because `SegmentReorderService` depends on real Lucene segment files
+(`.vec`, `.faiss`, `.vemf`) written by the codec.
+
+**Setup:**
+```bash
+# Copy non-reordered segments before starting
+cp -r /Users/finnrobl/Documents/k-NN-2/index-backups/* /Users/finnrobl/Documents/k-NN-2/e2e_data/
+
+# Start OpenSearch with k-NN plugin
+cd /Users/finnrobl/Documents/k-NN-2/k-NN
+./gradlew run -Ddata=/Users/finnrobl/Documents/k-NN-2/e2e_data
+```
+
+**Test steps:**
+1. Create a k-NN index with reorder enabled (BP strategy)
+2. Index >10k vectors (e.g., 50k from sift dataset)
+3. Call `_flush` → triggers `NativeEngines990KnnVectorsWriter.flush()` → `maybeReorderSegmentFiles()`
+4. Verify segment files were rewritten:
+   - `.vec` file: open with `Lucene99FlatVectorsReader`, verify vectors are NOT in insertion order
+   - `.faiss` file: load with `FaissIndex.load()`, verify HNSW graph neighbor lists reference valid ords
+5. Run k-NN search queries, verify results match non-reordered baseline (same recall@10)
+6. Call `_forcemerge?max_num_segments=1` → triggers `mergeOneField()` → reorder on merged segment
+7. Repeat verification on merged segment
+
+**Validation checks:**
+- `ReorderOrdMap` round-trip: for every vector, `oldOrd2New[newOrd2Old[i]] == i`
+- Vector content preserved: every vector in the reordered `.vec` exists in the original (just different order)
+- FAISS graph valid: all neighbor IDs in HNSW graph are in range `[0, numVectors)`
+- Search correctness: recall@10 identical to non-reordered index
+- No orphaned `.reorder` temp files left in segment directory
 
 ### Performance Tests
 
