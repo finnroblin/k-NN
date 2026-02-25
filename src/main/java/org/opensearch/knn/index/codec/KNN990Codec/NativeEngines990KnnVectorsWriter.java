@@ -15,9 +15,7 @@ import lombok.extern.log4j.Log4j2;
 import org.apache.lucene.codecs.KnnFieldVectorsWriter;
 import org.apache.lucene.codecs.KnnVectorsWriter;
 import org.apache.lucene.codecs.hnsw.FlatVectorsWriter;
-import org.apache.lucene.index.DocsWithFieldSet;
 import org.apache.lucene.index.FieldInfo;
-import org.apache.lucene.index.FloatVectorValues;
 import org.apache.lucene.index.MergeState;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.Sorter;
@@ -30,7 +28,6 @@ import org.opensearch.knn.index.codec.nativeindex.NativeIndexBuildStrategyFactor
 import org.opensearch.knn.index.codec.nativeindex.NativeIndexWriter;
 import org.opensearch.knn.index.quantizationservice.QuantizationService;
 import org.opensearch.knn.index.vectorvalues.KNNVectorValues;
-import org.opensearch.knn.index.vectorvalues.KNNVectorValuesFactory;
 import org.opensearch.knn.memoryoptsearch.faiss.reorder.SegmentReorderService;
 import org.opensearch.knn.memoryoptsearch.faiss.reorder.VectorReorderStrategy;
 import org.opensearch.knn.plugin.stats.KNNGraphValue;
@@ -42,13 +39,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
-import static org.apache.lucene.search.DocIdSetIterator.NO_MORE_DOCS;
 import static org.opensearch.knn.common.FieldInfoExtractor.extractVectorDataType;
 import static org.opensearch.knn.index.vectorvalues.KNNVectorValuesFactory.getKNNVectorValuesSupplierForMerge;
 import static org.opensearch.knn.index.vectorvalues.KNNVectorValuesFactory.getVectorValuesSupplier;
 
 /**
- * A KNNVectorsWriter class for writing the vector data strcutures and flat vectors for Native Engines.
+ * A KNNVectorsWriter class for writing the vector data structures and flat vectors for Native Engines.
  */
 @Log4j2
 public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
@@ -62,6 +58,10 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
     private final Integer approximateThreshold;
     private final NativeIndexBuildStrategyFactory nativeIndexBuildStrategyFactory;
     private final VectorReorderStrategy reorderStrategy;
+
+    // Fields that need reordering after finish() writes footers.
+    // Populated during mergeOneField() for fields above the reorder threshold.
+    private final List<FieldInfo> fieldsToReorder = new ArrayList<>();
 
     public NativeEngines990KnnVectorsWriter(
         SegmentWriteState segmentWriteState,
@@ -86,10 +86,6 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
         this.reorderStrategy = reorderStrategy;
     }
 
-    /**
-     * Add new field for indexing.
-     * @param fieldInfo {@link FieldInfo}
-     */
     @Override
     public KnnFieldVectorsWriter<?> addField(final FieldInfo fieldInfo) throws IOException {
         final NativeEngineFieldVectorsWriter<?> newField = NativeEngineFieldVectorsWriter.create(
@@ -101,12 +97,6 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
         return newField;
     }
 
-    /**
-     * Flush all buffered data on disk. This is not fsync. This is lucene flush.
-     *
-     * @param maxDoc int
-     * @param sortMap {@link Sorter.DocMap}
-     */
     @Override
     public void flush(int maxDoc, final Sorter.DocMap sortMap) throws IOException {
         flatVectorsWriter.flush(maxDoc, sortMap);
@@ -125,7 +115,6 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
                 field.getVectors()
             );
             final QuantizationState quantizationState = train(field.getFieldInfo(), knnVectorValuesSupplier, totalLiveDocs);
-            // should skip graph building only for non quantization use case and if threshold is met
             if (quantizationState == null && shouldSkipBuildingVectorDataStructure(totalLiveDocs)) {
                 log.debug(
                     "Skip building vector data structure for field: {}, as liveDoc: {} is less than the threshold {} during flush",
@@ -152,7 +141,6 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
 
     @Override
     public void mergeOneField(final FieldInfo fieldInfo, final MergeState mergeState) throws IOException {
-        // This will ensure that we are merging the FlatIndex during force merge.
         flatVectorsWriter.mergeOneField(fieldInfo, mergeState);
 
         final VectorDataType vectorDataType = extractVectorDataType(fieldInfo);
@@ -168,7 +156,6 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
         }
 
         final QuantizationState quantizationState = train(fieldInfo, knnVectorValuesSupplier, totalLiveDocs);
-        // should skip graph building only for non quantization use case and if threshold is met
         if (quantizationState == null && shouldSkipBuildingVectorDataStructure(totalLiveDocs)) {
             log.debug(
                 "Skip building vector data structure for field: {}, as liveDoc: {} is less than the threshold {} during merge",
@@ -186,17 +173,19 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
         );
 
         StopWatch stopWatch = new StopWatch().start();
-
         writer.mergeIndex(knnVectorValuesSupplier, totalLiveDocs);
-
         long time_in_millis = stopWatch.stop().totalTime().millis();
         KNNGraphValue.MERGE_TOTAL_TIME_IN_MILLIS.incrementBy(time_in_millis);
         log.debug("Merge took {} ms for vector field [{}]", time_in_millis, fieldInfo.getName());
+
+        // Mark this field for reordering. The actual reorder happens in finish() after
+        // flatVectorsWriter.finish() writes the .vec/.vemf footers, so we can read them.
+        if (reorderStrategy != null && totalLiveDocs >= SegmentReorderService.MIN_VECTORS_FOR_REORDER) {
+            fieldsToReorder.add(fieldInfo);
+            System.out.println("[Reorder] Marked field [" + fieldInfo.name + "] for reorder (" + totalLiveDocs + " vectors)");
+        }
     }
 
-    /**
-     * Called once at the end before close
-     */
     @Override
     public void finish() throws IOException {
         if (finished) {
@@ -206,22 +195,32 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
         if (quantizationStateWriter != null) {
             quantizationStateWriter.writeFooter();
         }
+        // This writes the .vec/.vemf codec footers.
         flatVectorsWriter.finish();
+        // Close to flush the IndexOutput buffers to disk so we can read the files.
+        flatVectorsWriter.close();
+
+        // Now that .vec/.vemf are finalized and flushed to disk, reorder any fields
+        // that were marked during mergeOneField(). Rewrites .vec, .vemf, and .faiss.
+        for (FieldInfo fieldInfo : fieldsToReorder) {
+            try {
+                System.out.println("[Reorder] Starting reorder for field [" + fieldInfo.getName() + "] in segment " + segmentWriteState.segmentInfo.name);
+                StopWatch reorderWatch = new StopWatch().start();
+                SegmentReorderService reorderService = new SegmentReorderService(
+                    segmentWriteState, fieldInfo, reorderStrategy
+                );
+                reorderService.reorderSegmentFiles();
+                long reorderMs = reorderWatch.stop().totalTime().millis();
+                System.out.println("[Reorder] Completed reorder for field [" + fieldInfo.getName() + "] in " + reorderMs + " ms");
+                log.info("Reorder took {} ms for field [{}]", reorderMs, fieldInfo.getName());
+            } catch (Exception e) {
+                System.out.println("[Reorder] FAILED for field [" + fieldInfo.getName() + "]: " + e.getMessage());
+                e.printStackTrace();
+                log.error("Failed to reorder field [{}], continuing without reorder", fieldInfo.getName(), e);
+            }
+        }
     }
 
-    /**
-     * Closes this stream and releases any system resources associated
-     * with it. If the stream is already closed then invoking this
-     * method has no effect.
-     *
-     * <p> As noted in {@link AutoCloseable#close()}, cases where the
-     * close may fail require careful attention. It is strongly advised
-     * to relinquish the underlying resources and to internally
-     * <em>mark</em> the {@code Closeable} as closed, prior to throwing
-     * the {@code IOException}.
-     *
-     * @throws IOException if an I/O error occurs
-     */
     @Override
     public void close() throws IOException {
         if (quantizationStateWriter != null) {
@@ -230,9 +229,6 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
         IOUtils.close(flatVectorsWriter);
     }
 
-    /**
-     * Return the memory usage of this object in bytes. Negative values are illegal.
-     */
     @Override
     public long ramBytesUsed() {
         return SHALLOW_SIZE + flatVectorsWriter.ramBytesUsed() + fields.stream()
@@ -245,7 +241,6 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
         final Supplier<KNNVectorValues<?>> knnVectorValuesSupplier,
         final int totalLiveDocs
     ) throws IOException {
-
         final QuantizationService quantizationService = QuantizationService.getInstance();
         final QuantizationParams quantizationParams = quantizationService.getQuantizationParams(fieldInfo);
         QuantizationState quantizationState = null;
@@ -254,18 +249,10 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
             quantizationState = quantizationService.train(quantizationParams, knnVectorValuesSupplier, totalLiveDocs);
             quantizationStateWriter.writeState(fieldInfo.getFieldNumber(), quantizationState);
         }
-
         return quantizationState;
     }
 
-    /**
-     * The {@link KNNVectorValues} will be exhausted after this function run. So make sure that you are not sending the
-     * vectorsValues object which you plan to use later
-     */
     private int getLiveDocs(KNNVectorValues<?> vectorValues) throws IOException {
-        // Count all the live docs as there vectorValues.totalLiveDocs() just gives the cost for the FloatVectorValues,
-        // and doesn't tell the correct number of docs, if there are deleted docs in the segment. So we are counting
-        // the total live docs here.
         int liveDocs = 0;
         while (vectorValues.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
             liveDocs++;

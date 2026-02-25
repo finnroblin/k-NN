@@ -14,17 +14,15 @@ import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.FloatVectorValues;
 import org.apache.lucene.index.IndexOptions;
-import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.VectorEncoding;
-import org.apache.lucene.index.VectorSimilarityFunction;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.FilterDirectory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.opensearch.knn.index.engine.KNNEngine;
-import org.opensearch.knn.memoryoptsearch.faiss.FaissIdMapIndex;
 import org.opensearch.knn.memoryoptsearch.faiss.FaissIndex;
 
 import java.io.IOException;
@@ -62,52 +60,48 @@ public class SegmentReorderService {
     }
 
     /**
-     * Reorder the .vec and .faiss files for the current segment/field.
-     * 1. Open .vec via Lucene99FlatVectorsReader (mmap) to get FloatVectorValues
-     * 2. Compute permutation via VectorReorderStrategy
-     * 3. Rewrite .vec in reordered order
-     * 4. Rewrite .faiss with remapped neighbor lists
+     * Reorder .vec, .vemf, and .faiss files for the current segment/field.
+     * Requires that .vec/.vemf have finalized codec footers (call after flatVectorsWriter.finish()).
+     * Reads vectors from the .vec file via Lucene99FlatVectorsReader, computes the permutation,
+     * then rewrites all three files with the reordered layout.
      */
     public void reorderSegmentFiles() throws IOException {
         final Directory directory = state.directory;
         final String segmentName = state.segmentInfo.name;
 
-        // Locate the .faiss file
+        // Step 1: Compute permutation from finalized .vec file
+        final int[] permutation = computePermutationFromVecFile(directory, segmentName);
+        final ReorderOrdMap reorderOrdMap = new ReorderOrdMap(permutation);
+
+        // Wrap directory to use the correct IOContext (MERGE during merge, DEFAULT during flush).
+        // ConcurrentMergeScheduler asserts createOutput uses IOContext.MERGE.
+        final Directory writeDir = new FilterDirectory(directory) {
+            @Override
+            public IndexOutput createOutput(String name, IOContext context) throws IOException {
+                return in.createOutput(name, state.context);
+            }
+        };
+
+        // Step 2: Rewrite .vec and .vemf in reordered layout
+        final String vecDataFileName = findFileWithSuffix(directory, segmentName, ".vec");
+        final String vecMetaFileName = findFileWithSuffix(directory, segmentName, ".vemf");
+        rewriteVecFile(directory, writeDir, vecDataFileName, vecMetaFileName, reorderOrdMap);
+
+        // Step 3: Rewrite .faiss file with remapped neighbor lists
         final KNNEngine knnEngine = KNNEngine.FAISS;
         final String engineFileName = buildEngineFileName(
             segmentName, knnEngine.getVersion(), fieldInfo.name, knnEngine.getExtension()
         );
-
-        // Locate the .vec and .vemf files (Lucene99FlatVectorsFormat naming)
-        final String vecDataFileName = findFileWithSuffix(directory, segmentName, ".vec");
-        final String vecMetaFileName = findFileWithSuffix(directory, segmentName, ".vemf");
-
-        if (vecDataFileName == null || vecMetaFileName == null) {
-            log.warn("Cannot find .vec/.vemf files for segment {}, skipping reorder", segmentName);
-            return;
-        }
-
-        // Step 1: Open .vec via mmap-backed reader and compute permutation
-        final int[] permutation;
-        try {
-            permutation = computePermutationFromVecFile(directory, segmentName, vecDataFileName, vecMetaFileName);
-        } catch (Exception e) {
-            log.error("Failed to compute reorder permutation for segment {}, field {}", segmentName, fieldInfo.name, e);
-            return;
-        }
-
-        final ReorderOrdMap reorderOrdMap = new ReorderOrdMap(permutation);
-
-        // Step 2: Rewrite .vec file in reordered order
-        rewriteVecFile(directory, vecDataFileName, vecMetaFileName, reorderOrdMap);
-
-        // Step 3: Rewrite .faiss file with remapped neighbor lists
-        rewriteFaissFile(directory, engineFileName, reorderOrdMap);
+        rewriteFaissFile(directory, writeDir, engineFileName, reorderOrdMap);
     }
 
-    private int[] computePermutationFromVecFile(
-        Directory directory, String segmentName, String vecDataFileName, String vecMetaFileName
-    ) throws IOException {
+    private int[] computePermutationFromVecFile(Directory directory, String segmentName) throws IOException {
+        final String vecDataFileName = findFileWithSuffix(directory, segmentName, ".vec");
+        final String vecMetaFileName = findFileWithSuffix(directory, segmentName, ".vemf");
+        if (vecDataFileName == null || vecMetaFileName == null) {
+            throw new IOException("Cannot find .vec/.vemf files for segment " + segmentName);
+        }
+
         // Build a SegmentReadState to open the Lucene99FlatVectorsReader
         final FieldInfo readFieldInfo = buildFieldInfoForRead();
         final FieldInfos fieldInfos = new FieldInfos(new FieldInfo[] { readFieldInfo });
@@ -126,19 +120,30 @@ public class SegmentReorderService {
                 throw new IOException("No float vector values for field " + fieldInfo.name);
             }
             log.info("Computing reorder permutation for {} vectors, field [{}]", vectorValues.size(), fieldInfo.name);
-            return strategy.computePermutation(vectorValues, numThreads);
+            int[] perm = strategy.computePermutation(vectorValues, numThreads);
+            System.out.println("[Reorder] Permutation computed for " + vectorValues.size() + " vectors, field [" + fieldInfo.name + "]");
+            System.out.println("[Reorder] First 10 permutation entries (newOrd -> oldOrd): ");
+            for (int i = 0; i < Math.min(10, perm.length); i++) {
+                System.out.println("[Reorder]   newOrd=" + i + " -> oldOrd=" + perm[i]);
+            }
+            boolean isIdentity = true;
+            for (int i = 0; i < perm.length; i++) {
+                if (perm[i] != i) { isIdentity = false; break; }
+            }
+            System.out.println("[Reorder] Permutation is identity (no reorder): " + isIdentity);
+            return perm;
         }
     }
 
     private void rewriteVecFile(
-        Directory directory, String vecDataFileName, String vecMetaFileName, ReorderOrdMap reorderOrdMap
+        Directory readDir, Directory writeDir, String vecDataFileName, String vecMetaFileName, ReorderOrdMap reorderOrdMap
     ) throws IOException {
         final String reorderedVecData = vecDataFileName + REORDER_SUFFIX;
         final String reorderedVecMeta = vecMetaFileName + REORDER_SUFFIX;
 
         // Clean up any leftover reorder files
-        deleteIfExists(directory, reorderedVecData);
-        deleteIfExists(directory, reorderedVecMeta);
+        deleteIfExists(readDir, reorderedVecData);
+        deleteIfExists(readDir, reorderedVecMeta);
 
         final int numVectors = reorderOrdMap.newOrd2Old.length;
 
@@ -148,12 +153,12 @@ public class SegmentReorderService {
         final String segmentSuffix = extractSegmentSuffix(vecDataFileName, state.segmentInfo.name);
 
         final SegmentReadState readState = new SegmentReadState(
-            directory, state.segmentInfo, fieldInfos, IOContext.DEFAULT, segmentSuffix
+            readDir, state.segmentInfo, fieldInfos, IOContext.DEFAULT, segmentSuffix
         );
 
-        try (IndexInput vecMetaInput = directory.openInput(vecMetaFileName, IOContext.DEFAULT)) {
+        try (IndexInput vecMetaInput = readDir.openInput(vecMetaFileName, IOContext.DEFAULT)) {
             final ReorderedFlatVectorsWriter writer = new ReorderedFlatVectorsWriter(
-                directory, reorderedVecMeta, reorderedVecData, numVectors, vecMetaInput
+                writeDir, reorderedVecMeta, reorderedVecData, numVectors, vecMetaInput
             );
 
             try (
@@ -173,28 +178,28 @@ public class SegmentReorderService {
         }
 
         // Atomic replace: delete originals, rename reordered files
-        directory.deleteFile(vecDataFileName);
-        directory.deleteFile(vecMetaFileName);
-        directory.rename(reorderedVecData, vecDataFileName);
-        directory.rename(reorderedVecMeta, vecMetaFileName);
+        readDir.deleteFile(vecDataFileName);
+        readDir.deleteFile(vecMetaFileName);
+        readDir.rename(reorderedVecData, vecDataFileName);
+        readDir.rename(reorderedVecMeta, vecMetaFileName);
 
         log.info("Reordered .vec file for segment {}, field [{}]", state.segmentInfo.name, fieldInfo.name);
     }
 
-    private void rewriteFaissFile(Directory directory, String engineFileName, ReorderOrdMap reorderOrdMap) throws IOException {
+    private void rewriteFaissFile(Directory readDir, Directory writeDir, String engineFileName, ReorderOrdMap reorderOrdMap) throws IOException {
         final String reorderedFaiss = engineFileName + REORDER_SUFFIX;
-        deleteIfExists(directory, reorderedFaiss);
+        deleteIfExists(readDir, reorderedFaiss);
 
-        try (IndexInput faissInput = directory.openInput(engineFileName, IOContext.DEFAULT)) {
+        try (IndexInput faissInput = readDir.openInput(engineFileName, IOContext.DEFAULT)) {
             final FaissIndex faissIndex = FaissIndex.load(faissInput);
 
-            try (IndexOutput faissOutput = directory.createOutput(reorderedFaiss, IOContext.DEFAULT)) {
+            try (IndexOutput faissOutput = writeDir.createOutput(reorderedFaiss, IOContext.DEFAULT)) {
                 FaissIndexReorderTransformer.transform(faissIndex, faissInput, faissOutput, reorderOrdMap);
             }
         }
 
-        directory.deleteFile(engineFileName);
-        directory.rename(reorderedFaiss, engineFileName);
+        readDir.deleteFile(engineFileName);
+        readDir.rename(reorderedFaiss, engineFileName);
 
         log.info("Reordered .faiss file for segment {}, field [{}]", state.segmentInfo.name, fieldInfo.name);
     }

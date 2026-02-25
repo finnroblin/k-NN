@@ -28,18 +28,14 @@ import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TotalHits;
 import org.apache.lucene.store.DataAccessHint;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.store.FileDataHint;
 import org.apache.lucene.store.FileTypeHint;
-import org.apache.lucene.store.FilterDirectory;
 import org.apache.lucene.store.IOContext;
-import org.apache.lucene.store.MMapDirectory;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.IOSupplier;
 import org.apache.lucene.util.IOUtils;
 import org.opensearch.common.UUIDs;
 import org.opensearch.knn.common.FieldInfoExtractor;
-import org.opensearch.knn.index.codec.KNN80Codec.KNN80CompoundDirectory;
 import org.opensearch.knn.index.codec.util.KNNCodecUtil;
 import org.opensearch.knn.index.codec.util.NativeMemoryCacheKeyHelper;
 import org.opensearch.knn.index.engine.KNNEngine;
@@ -54,8 +50,6 @@ import org.opensearch.knn.quantization.models.quantizationState.QuantizationStat
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -81,21 +75,8 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
     // the lock object will not be needed
     private final Object vectorSearcherHolderLockObject;
     private final IOContext ioContext;
-    private final MMapDirectory afterReorderingMMapDirectory;
 
     public NativeEngines990KnnVectorsReader(final SegmentReadState state, final FlatVectorsReader flatVectorsReader) throws IOException {
-        if (Files.exists(Path.of("/tmp/dododo"))) {
-            final Path directory = resolveDirectoryPath(state.directory);
-            System.out.println("!!!!!!!!!!!!!!!! (native non-reordered reader) Original directory -> " + directory);
-            final String afterReorderingDirectory =
-                directory.toAbsolutePath().toString().replaceAll("before-reordering", "before-reordering/data/after-reordering");
-            System.out.println("!!!!!!!!!!!!!!!!! New directory -> " + afterReorderingDirectory);
-            afterReorderingMMapDirectory = new MMapDirectory(Path.of(afterReorderingDirectory));
-        } else {
-            System.out.println("&&&&&&&&&&&&&&&&& (native non-reordered reader)Using before-reordering .vec file.");
-            afterReorderingMMapDirectory = null;
-        }
-
         this.flatVectorsReader = flatVectorsReader;
         this.segmentReadState = state;
         this.cacheKeys = getVectorCacheKeysFromSegmentReaderState(state);
@@ -264,8 +245,6 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
             closeables.add(vectorSearcherHolder.getVectorSearcher());
         }
 
-        closeables.add(afterReorderingMMapDirectory);
-
         IOUtils.close(closeables);
 
         // Clean up quantized state cache.
@@ -374,7 +353,7 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
         // Start creating searcher
         final String fileName = KNNCodecUtil.getNativeEngineFileFromFieldInfo(fieldInfo, segmentReadState.segmentInfo);
         if (fileName != null) {
-            final Directory directory = afterReorderingMMapDirectory != null ? afterReorderingMMapDirectory : segmentReadState.directory;
+            final Directory directory = segmentReadState.directory;
             return () -> searcherFactory.createVectorSearcher(directory, fileName, fieldInfo, ioContext);
         }
 
@@ -425,20 +404,5 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
         public boolean isSet() {
             return vectorSearcher != null;
         }
-    }
-
-    private static Path resolveDirectoryPath(Directory directory) {
-        Directory unwrapped = FilterDirectory.unwrap(directory);
-        if (unwrapped instanceof FSDirectory) {
-            return ((FSDirectory) unwrapped).getDirectory();
-        }
-        if (unwrapped instanceof KNN80CompoundDirectory) {
-            Directory inner = ((KNN80CompoundDirectory) unwrapped).getDir();
-            Directory innerUnwrapped = FilterDirectory.unwrap(inner);
-            if (innerUnwrapped instanceof FSDirectory) {
-                return ((FSDirectory) innerUnwrapped).getDirectory();
-            }
-        }
-        throw new IllegalStateException("Cannot resolve filesystem path from directory: " + unwrapped.getClass().getName());
     }
 }
