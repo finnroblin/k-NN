@@ -121,16 +121,6 @@ public class SegmentReorderService {
             }
             log.info("Computing reorder permutation for {} vectors, field [{}]", vectorValues.size(), fieldInfo.name);
             int[] perm = strategy.computePermutation(vectorValues, numThreads);
-            System.out.println("[Reorder] Permutation computed for " + vectorValues.size() + " vectors, field [" + fieldInfo.name + "]");
-            System.out.println("[Reorder] First 10 permutation entries (newOrd -> oldOrd): ");
-            for (int i = 0; i < Math.min(10, perm.length); i++) {
-                System.out.println("[Reorder]   newOrd=" + i + " -> oldOrd=" + perm[i]);
-            }
-            boolean isIdentity = true;
-            for (int i = 0; i < perm.length; i++) {
-                if (perm[i] != i) { isIdentity = false; break; }
-            }
-            System.out.println("[Reorder] Permutation is identity (no reorder): " + isIdentity);
             return perm;
         }
     }

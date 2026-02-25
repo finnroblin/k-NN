@@ -182,7 +182,6 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
         // flatVectorsWriter.finish() writes the .vec/.vemf footers, so we can read them.
         if (reorderStrategy != null && totalLiveDocs >= SegmentReorderService.MIN_VECTORS_FOR_REORDER) {
             fieldsToReorder.add(fieldInfo);
-            System.out.println("[Reorder] Marked field [" + fieldInfo.name + "] for reorder (" + totalLiveDocs + " vectors)");
         }
     }
 
@@ -204,18 +203,14 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
         // that were marked during mergeOneField(). Rewrites .vec, .vemf, and .faiss.
         for (FieldInfo fieldInfo : fieldsToReorder) {
             try {
-                System.out.println("[Reorder] Starting reorder for field [" + fieldInfo.getName() + "] in segment " + segmentWriteState.segmentInfo.name);
                 StopWatch reorderWatch = new StopWatch().start();
                 SegmentReorderService reorderService = new SegmentReorderService(
                     segmentWriteState, fieldInfo, reorderStrategy
                 );
                 reorderService.reorderSegmentFiles();
                 long reorderMs = reorderWatch.stop().totalTime().millis();
-                System.out.println("[Reorder] Completed reorder for field [" + fieldInfo.getName() + "] in " + reorderMs + " ms");
                 log.info("Reorder took {} ms for field [{}]", reorderMs, fieldInfo.getName());
             } catch (Exception e) {
-                System.out.println("[Reorder] FAILED for field [" + fieldInfo.getName() + "]: " + e.getMessage());
-                e.printStackTrace();
                 log.error("Failed to reorder field [{}], continuing without reorder", fieldInfo.getName(), e);
             }
         }

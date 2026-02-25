@@ -130,7 +130,6 @@ public class ReorderedLucene99FlatVectorsReader111 extends FlatVectorsReader {
                 state.segmentInfo.getId(),
                 state.segmentSuffix
             );
-            System.out.println("[ReorderedReader] Successfully opened REORDERED .vemf for segment " + state.segmentInfo.name);
             readFields(meta, state.fieldInfos);
         }
         return versionMeta;
