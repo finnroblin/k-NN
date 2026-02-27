@@ -285,9 +285,8 @@ public class ReorderAllWithKMeans {
         long e_load = System.nanoTime();
         System.out.println("vec loading took : " + (e_load - s_load) / 1e6 + "ms");
 
-        // Determine number of clusters (k)
-        int k = Math.min(DEFAULT_NUM_CLUSTERS, numVectors / 100);
-        k = Math.max(k, 2); // At least 2 clusters
+        // Determine number of clusters (k) — override via -Dknn.kmeans.numClusters=N
+        int k = Integer.getInteger("knn.kmeans.numClusters", DEFAULT_NUM_CLUSTERS);
         System.out.println("Computing K-Means permutation with k=" + k + " clusters...");
 
         // Use inner product metric for MAXIMUM_INNER_PRODUCT similarity
