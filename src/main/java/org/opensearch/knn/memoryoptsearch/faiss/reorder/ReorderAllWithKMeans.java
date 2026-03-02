@@ -58,7 +58,7 @@ public class ReorderAllWithKMeans {
     }
 
     public static void main(String... args) throws IOException {
-        final String searchDirectory = "/home/ec2-user/k-NN-gorder/build/testclusters/integTest-0/distro/3.5.0-ARCHIVE/data";
+        final String searchDirectory = "/home/ec2-user/k-NN-finn/build/testclusters/integTest-0/distro/3.6.0-SNAPSHOT/data";
 //        final String searchDirectory = "/Users/finnrobl/Documents/k-NN-2/sift-binary";
         final List<TargetFiles> targetFilesList = findTargetFiles(Path.of(searchDirectory));
         for (final TargetFiles targetFiles : targetFilesList) {

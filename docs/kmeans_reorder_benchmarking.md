@@ -31,8 +31,8 @@ int k = Math.min(configuredK, numVectors / 100);
 set -euo pipefail
 
 # --- Configuration ---
-KNN_HOME="/home/ec2-user/k-NN-gorder"
-DISTRO="${KNN_HOME}/build/testclusters/integTest-0/distro/3.5.0-ARCHIVE"
+KNN_HOME="/home/ec2-user/k-NN-finn"
+DISTRO="${KNN_HOME}/build/testclusters/integTest-0/distro/3.6.0-SNAPSHOT"
 LIB_PATH="${DISTRO}/plugins/opensearch-knn"
 CLASSPATH="${DISTRO}/lib/*:${DISTRO}/plugins/opensearch-knn/*"
 DATA_DIR="${DISTRO}/data"
@@ -124,7 +124,7 @@ done
 4. Ensure the index data is present under the test cluster data directory.
 5. **Create a baseline copy of the shard data before any reordering** — reordering calls `switchFiles` which overwrites the original `.faiss`, `.vec`, and `.vemf` files in place. Each sweep iteration must start from the original unreordered data.
    ```bash
-   DATA_DIR="/home/ec2-user/k-NN-gorder/build/testclusters/integTest-0/distro/3.5.0-ARCHIVE/data"
+   DATA_DIR="/home/ec2-user/k-NN-finn/build/testclusters/integTest-0/distro/3.6.0-SNAPSHOT/data"
    cp -r "$DATA_DIR" "${DATA_DIR}_baseline"
    ```
 6. Run `bash do_reorder_kmeans_sweep.sh` — the sweep script should restore from baseline before each run.
