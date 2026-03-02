@@ -4,47 +4,38 @@
 
 Measure the impact of varying the number of K-Means centroids on reorder quality and performance. Sweep `k` across: **500, 1000, 1500, 2000, 2500, 3000**.
 
-## Current State
-
-- `ReorderAllWithKMeans` hardcodes `DEFAULT_NUM_CLUSTERS = 500`.
-- The shell script `do_reorder_kmeans.sh` invokes the class with no way to override `k`.
-
 ## Required Code Change
 
-Add a system property override for `k` in `ReorderAllWithKMeans.getOrderMap()`:
+`k` is now directly configurable via `-Dknn.kmeans.numClusters=N` (defaults to 500), no clamping.
 
-```java
-// Replace:
-int k = Math.min(DEFAULT_NUM_CLUSTERS, numVectors / 100);
+## Step 1: Build
 
-// With:
-int configuredK = Integer.getInteger("knn.kmeans.numClusters", DEFAULT_NUM_CLUSTERS);
-int k = Math.min(configuredK, numVectors / 100);
+```bash
+cd /home/ec2-user/k-NN-finn
+git pull origin finn-reorder-kmeans
+./gradlew :buildJniLib && ./gradlew assemble
+mv build/testclusters/integTest-0/distro/3.6.0-SNAPSHOT \
+   build/testclusters/integTest-0/distro/3.6.0-ARCHIVE
+cp jni/build/release/*.so \
+   build/testclusters/integTest-0/distro/3.6.0-ARCHIVE/plugins/opensearch-knn/
 ```
 
-## Benchmark Script
+## Step 2: Run Reorder Sweep
 
-`do_reorder_kmeans_sweep.sh` — runs reorder for each centroid count, collecting timing output per run.
+`do_reorder_kmeans_sweep.sh` — runs reorder for each centroid count, saves reordered data per k.
 
 ```bash
 #!/bin/bash
 set -euo pipefail
 
-# --- Configuration ---
-KNN_HOME="/home/ec2-user/k-NN-finn"
-DISTRO="${KNN_HOME}/build/testclusters/integTest-0/distro/3.6.0-SNAPSHOT"
+DISTRO="/home/ec2-user/k-NN-finn/build/testclusters/integTest-0/distro/3.6.0-ARCHIVE"
 LIB_PATH="${DISTRO}/plugins/opensearch-knn"
 CLASSPATH="${DISTRO}/lib/*:${DISTRO}/plugins/opensearch-knn/*"
 DATA_DIR="${DISTRO}/data"
-BASELINE_DIR="${DATA_DIR}_baseline"
+BASELINE_DIR="/home/ec2-user/before-reordering/data/nodes"
+REORDERED_BASE="/home/ec2-user/reordering-sweep-data"
 CENTROIDS=(500 1000 1500 2000 2500 3000)
 RESULTS_DIR="benchmark_results/kmeans_$(date +%Y%m%d_%H%M%S)"
-
-# Create baseline copy if it doesn't exist
-if [ ! -d "$BASELINE_DIR" ]; then
-    echo "Creating baseline copy of shard data..."
-    cp -r "$DATA_DIR" "$BASELINE_DIR"
-fi
 
 mkdir -p "$RESULTS_DIR"
 
@@ -57,28 +48,58 @@ for k in "${CENTROIDS[@]}"; do
     rm -rf "$DATA_DIR"
     cp -r "$BASELINE_DIR" "$DATA_DIR"
 
-    pgfault_start=$(awk '$1=="pgmajfault"{print $2}' /proc/vmstat)
-
     java -Djava.library.path="$LIB_PATH" \
          -Dknn.kmeans.numClusters="$k" \
          -cp "$CLASSPATH" \
          org.opensearch.knn.memoryoptsearch.faiss.reorder.ReorderAllWithKMeans \
          2>&1 | tee "$LOG_FILE"
 
-    pgfault_end=$(awk '$1=="pgmajfault"{print $2}' /proc/vmstat)
-    pgfaults=$((pgfault_end - pgfault_start))
-    echo "Major page faults: $pgfaults" | tee -a "$LOG_FILE"
+    # Save reordered data for later search benchmarking
+    REORDERED_DIR="${REORDERED_BASE}/kmeans_k${k}/data"
+    echo "Saving reordered data to ${REORDERED_DIR} ..."
+    rm -rf "${REORDERED_BASE}/kmeans_k${k}"
+    mkdir -p "${REORDERED_BASE}/kmeans_k${k}"
+    cp -r "$DATA_DIR" "$REORDERED_DIR"
 
     echo "--- k=$k complete, log: $LOG_FILE ---"
     echo
 done
 
 echo "All runs complete. Results in: $RESULTS_DIR"
+echo ""
+echo "Reordered data saved under: ${REORDERED_BASE}/"
+echo "To run search against a specific k:"
+echo "  rm -rf /home/ec2-user/before-reordering/after-reordering/data"
+echo "  cp -r ${REORDERED_BASE}/kmeans_k<N>/data /home/ec2-user/before-reordering/after-reordering/data"
 ```
 
-## Metrics to Collect
+## Step 3: Start OpenSearch Cluster (per k value)
 
-Each run already prints these timings — extract from the log files:
+For each centroid count you want to search against:
+
+```bash
+# 3a. Replace after-reordering data with the reordered data for this k
+rm -rf /home/ec2-user/before-reordering/after-reordering/data/nodes
+cp -r /home/ec2-user/reordering-sweep-data/kmeans_k<N>/data \
+      /home/ec2-user/before-reordering/after-reordering/data/nodes
+
+# 3b. Signal file (required by cluster startup)
+touch /tmp/dododo
+
+# 3c. Prep OpenSearch
+cd /home/ec2-user/k-NN-finn/build/testclusters/integTest-0/distro/3.6.0-ARCHIVE
+rm -rf data
+ln -s /home/ec2-user/before-reordering/data
+cp ~/jvm.options ./config/jvm.options
+cp ~/opensearch.yml ./config/opensearch.yml
+
+# 3d. Start OpenSearch
+./bin/opensearch
+```
+
+## Reorder Metrics
+
+Each reorder run logs these timings — extract from the log files:
 
 | Metric | Source (log line) |
 |---|---|
@@ -87,21 +108,16 @@ Each run already prints these timings — extract from the log files:
 | Faiss ID update time | `faiss id update took : Xms` |
 | Total reorder time | `K-Means Reordering took : Xms` |
 | Vec transform time | `Transforming .vec took Xms` |
-| Major page faults | `Major page faults: N` |
 
-Additionally, the permutation file `permutation_kmeans.txt` is saved per shard and can be used for displacement analysis.
-
-## Parsing Results
-
-Quick extraction script to build a summary table:
+## Parsing Reorder Results
 
 ```bash
 #!/bin/bash
 # parse_kmeans_results.sh <results_dir>
 DIR="${1:?Usage: parse_kmeans_results.sh <results_dir>}"
 
-printf "%-6s  %12s  %12s  %12s  %12s  %12s  %12s\n" \
-       "k" "vec_load" "permutation" "faiss_id" "total_reorder" "vec_transform" "pgfaults"
+printf "%-6s  %12s  %12s  %12s  %12s  %12s\n" \
+       "k" "vec_load" "permutation" "faiss_id" "total_reorder" "vec_transform"
 
 for f in "$DIR"/kmeans_k*.log; do
     k=$(echo "$f" | grep -oP 'k\K[0-9]+')
@@ -110,28 +126,15 @@ for f in "$DIR"/kmeans_k*.log; do
     faiss=$(grep -oP 'faiss id update took : \K[0-9.]+' "$f" | tail -1)
     total=$(grep -oP 'K-Means Reordering took : \K[0-9.]+' "$f" | tail -1)
     vec_tx=$(grep -oP 'Transforming .vec took \K[0-9.]+' "$f" | tail -1)
-    pgfaults=$(grep -oP 'Major page faults: \K[0-9]+' "$f" | tail -1)
-    printf "%-6s  %12s  %12s  %12s  %12s  %12s  %12s\n" \
-           "$k" "${vec_load}ms" "${perm}ms" "${faiss}ms" "${total}ms" "${vec_tx}ms" "$pgfaults"
+    printf "%-6s  %12s  %12s  %12s  %12s  %12s\n" \
+           "$k" "${vec_load}ms" "${perm}ms" "${faiss}ms" "${total}ms" "${vec_tx}ms"
 done
 ```
 
-## Execution Steps
-
-1. Apply the system property code change to `ReorderAllWithKMeans.java`.
-2. Rebuild: `./gradlew :buildJniLib && ./gradlew assemble`.
-3. Copy the built `.so` files to the test cluster plugin dir (as `do_reorder_kmeans.sh` already does).
-4. Ensure the index data is present under the test cluster data directory.
-5. **Create a baseline copy of the shard data before any reordering** — reordering calls `switchFiles` which overwrites the original `.faiss`, `.vec`, and `.vemf` files in place. Each sweep iteration must start from the original unreordered data.
-   ```bash
-   DATA_DIR="/home/ec2-user/k-NN-finn/build/testclusters/integTest-0/distro/3.6.0-SNAPSHOT/data"
-   cp -r "$DATA_DIR" "${DATA_DIR}_baseline"
-   ```
-6. Run `bash do_reorder_kmeans_sweep.sh` — the sweep script should restore from baseline before each run.
-7. Parse: `bash parse_kmeans_results.sh benchmark_results/kmeans_<timestamp>`.
-
 ## Notes
 
-- `k` is now directly configurable via `-Dknn.kmeans.numClusters=N` with no clamping — the value you pass is the value used.
-- Iterations are fixed at `DEFAULT_NUM_ITERATIONS = 25`. Can be parameterized similarly if needed.
-- **`switchFiles` overwrites index files in place.** You must restore from the baseline copy before each run, otherwise subsequent runs reorder already-reordered data.
+- `k` is directly configurable via `-Dknn.kmeans.numClusters=N` with no clamping.
+- Iterations fixed at `DEFAULT_NUM_ITERATIONS = 25`. Can be parameterized similarly if needed.
+- `switchFiles` overwrites index files in place — the sweep restores from baseline before each run.
+- Reordered data is saved to `/home/ec2-user/reordering-sweep-data/kmeans_k<N>/data` for each centroid count.
+- Page faults should be measured during the search workload, not during reordering.
