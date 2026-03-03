@@ -45,6 +45,7 @@ public class KMeansReorderStrategy implements VectorReorderStrategy {
             System.arraycopy(src, 0, heapVectors[i], 0, src.length);
         }
 
-        return ClusterSorter.clusterAndSort(heapVectors, effectiveK, niter, KMeansClusterer.METRIC_L2);
+        int[] perm = ClusterSorter.clusterAndSort(heapVectors, effectiveK, niter, KMeansClusterer.METRIC_L2);
+        return perm;
     }
 }
