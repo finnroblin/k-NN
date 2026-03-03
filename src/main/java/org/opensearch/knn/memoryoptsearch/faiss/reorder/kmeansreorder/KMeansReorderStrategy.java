@@ -6,6 +6,7 @@
 package org.opensearch.knn.memoryoptsearch.faiss.reorder.kmeansreorder;
 
 import org.apache.lucene.index.FloatVectorValues;
+import org.apache.lucene.index.VectorSimilarityFunction;
 import org.opensearch.knn.memoryoptsearch.faiss.reorder.VectorReorderStrategy;
 
 import java.io.IOException;
@@ -33,9 +34,15 @@ public class KMeansReorderStrategy implements VectorReorderStrategy {
     }
 
     @Override
-    public int[] computePermutation(FloatVectorValues vectors, int numThreads) throws IOException {
+    public int[] computePermutation(FloatVectorValues vectors, int numThreads, VectorSimilarityFunction similarityFunction)
+        throws IOException {
         int n = vectors.size();
         int effectiveK = Math.min(k, n);
+
+        int metricType = (similarityFunction == VectorSimilarityFunction.MAXIMUM_INNER_PRODUCT
+            || similarityFunction == VectorSimilarityFunction.COSINE)
+            ? KMeansClusterer.METRIC_INNER_PRODUCT
+            : KMeansClusterer.METRIC_L2;
 
         // Materialize vectors into heap — required by KMeans clustering
         float[][] heapVectors = new float[n][];
@@ -45,7 +52,7 @@ public class KMeansReorderStrategy implements VectorReorderStrategy {
             System.arraycopy(src, 0, heapVectors[i], 0, src.length);
         }
 
-        int[] perm = ClusterSorter.clusterAndSort(heapVectors, effectiveK, niter, KMeansClusterer.METRIC_L2);
+        int[] perm = ClusterSorter.clusterAndSort(heapVectors, effectiveK, niter, metricType);
         return perm;
     }
 }

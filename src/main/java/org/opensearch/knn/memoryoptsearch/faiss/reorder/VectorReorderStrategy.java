@@ -6,6 +6,7 @@
 package org.opensearch.knn.memoryoptsearch.faiss.reorder;
 
 import org.apache.lucene.index.FloatVectorValues;
+import org.apache.lucene.index.VectorSimilarityFunction;
 
 import java.io.IOException;
 
@@ -23,8 +24,9 @@ public interface VectorReorderStrategy {
      *                   Accessed via random-access vectorValue(int ord).
      *                   Each thread should call vectors.copy() for its own view.
      * @param numThreads number of CPU threads to use for the computation
+     * @param similarityFunction the similarity function used by the field
      * @return permutation array where permutation[newOrd] = oldOrd
      * @throws IOException if reading vectors fails
      */
-    int[] computePermutation(FloatVectorValues vectors, int numThreads) throws IOException;
+    int[] computePermutation(FloatVectorValues vectors, int numThreads, VectorSimilarityFunction similarityFunction) throws IOException;
 }

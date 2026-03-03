@@ -120,7 +120,7 @@ public class SegmentReorderService {
                 throw new IOException("No float vector values for field " + fieldInfo.name);
             }
             log.info("Computing reorder permutation for {} vectors, field [{}]", vectorValues.size(), fieldInfo.name);
-            int[] perm = strategy.computePermutation(vectorValues, numThreads);
+            int[] perm = strategy.computePermutation(vectorValues, numThreads, fieldInfo.getVectorSimilarityFunction());
             return perm;
         }
     }

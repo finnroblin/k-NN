@@ -22,18 +22,9 @@ import java.util.concurrent.ForkJoinPool;
  */
 public class BipartiteReorderStrategy implements VectorReorderStrategy {
 
-    private final VectorSimilarityFunction similarityFunction;
-
-    public BipartiteReorderStrategy() {
-        this(VectorSimilarityFunction.EUCLIDEAN);
-    }
-
-    public BipartiteReorderStrategy(VectorSimilarityFunction similarityFunction) {
-        this.similarityFunction = similarityFunction;
-    }
-
     @Override
-    public int[] computePermutation(FloatVectorValues vectors, int numThreads) throws IOException {
+    public int[] computePermutation(FloatVectorValues vectors, int numThreads, VectorSimilarityFunction similarityFunction)
+        throws IOException {
         BpVectorReorderer reorderer = new BpVectorReorderer("vectors");
         reorderer.setMinPartitionSize(1);
 
