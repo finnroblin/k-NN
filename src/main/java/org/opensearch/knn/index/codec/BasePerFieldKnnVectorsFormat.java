@@ -24,6 +24,7 @@ import org.opensearch.knn.index.mapper.KNNMappingConfig;
 import org.opensearch.knn.index.mapper.KNNVectorFieldType;
 import org.opensearch.knn.memoryoptsearch.faiss.reorder.VectorReorderStrategy;
 import org.opensearch.knn.memoryoptsearch.faiss.reorder.bpreorder.BipartiteReorderStrategy;
+import org.opensearch.knn.memoryoptsearch.faiss.reorder.kmeansreorder.KMeansReorderStrategy;
 
 import java.util.Map;
 import java.util.Optional;
@@ -159,13 +160,27 @@ public abstract class BasePerFieldKnnVectorsFormat extends PerFieldKnnVectorsFor
         // mapperService is already checked for null or valid instance type at caller, hence we don't need
         // addition isPresent check here.
         final int approximateThreshold = getApproximateThresholdValue();
-        final VectorReorderStrategy reorderStrategy = new BipartiteReorderStrategy();
+        final VectorReorderStrategy reorderStrategy = getReorderStrategy();
         return new NativeEngines990KnnVectorsFormat(
             new Lucene99FlatVectorsFormat(FlatVectorScorerUtil.getLucene99FlatVectorsScorer()),
             approximateThreshold,
             nativeIndexBuildStrategyFactory,
             reorderStrategy
         );
+    }
+
+    private VectorReorderStrategy getReorderStrategy() {
+        final IndexSettings indexSettings = mapperService.get().getIndexSettings();
+        final String strategy = indexSettings.getValue(KNNSettings.INDEX_KNN_ADVANCED_REORDER_STRATEGY_SETTING);
+        switch (strategy) {
+            case "kmeans":
+                final int numClusters = indexSettings.getValue(KNNSettings.INDEX_KNN_ADVANCED_REORDER_KMEANS_NUM_CLUSTERS_SETTING);
+                return new KMeansReorderStrategy(numClusters, 25);
+            case "none":
+                return null;
+            default:
+                return new BipartiteReorderStrategy();
+        }
     }
 
     private int getApproximateThresholdValue() {
