@@ -164,7 +164,7 @@ public class SegmentReorderService {
             // Open a FRESH input for address extraction (no header consumed)
             try (IndexInput mmapInput = directory.openInput(vecDataFileName, IOContext.DEFAULT)) {
                 return kmeansStrategy.computePermutationMMap(
-                    mmapInput, vectorDataOffset, 0,
+                    mmapInput, vectorDataOffset,
                     vectorValues.size(), vectorValues.dimension(),
                     fieldInfo.getVectorSimilarityFunction()
                 );
