@@ -304,20 +304,45 @@ SegmentMerger.mergeVectorValues()
 4. Reorder: open merged `.vec` via mmap, compute BP permutation (~80MB heap for metadata),
    rewrite `.vec`, `.vemf`, and `.faiss` with permutation
 
-### TODO 7: Wire up strategy selection
+### TODO 7: Wire up strategy selection ✅ DONE
 
-The `VectorReorderStrategy` instance needs to be passed through the codec stack:
+The `VectorReorderStrategy` instance is selected via dynamic index settings and passed through
+the codec stack:
 
-1. `NativeEngines990KnnVectorsFormat` constructor → accepts strategy (or strategy name)
-2. `NativeEngines990KnnVectorsWriter` constructor → receives strategy
-3. `flush()` and `mergeOneField()` → use strategy
+1. `KNNSettings.java`: Two new dynamic index settings:
+   - `index.knn.advanced.reorder_strategy` — string: `bp` (default), `kmeans`, `none`
+   - `index.knn.advanced.reorder_kmeans_num_clusters` — int, default 256, min 1
+2. `BasePerFieldKnnVectorsFormat.getReorderStrategy()`: reads settings, creates strategy instance
+3. `NativeEngines990KnnVectorsFormat` constructor → accepts strategy
+4. `NativeEngines990KnnVectorsWriter` constructor → receives strategy
 
-For now, default to `BipartiteReorderStrategy`. Could later be configurable via index settings:
+Settings are dynamic and index-scoped — can be changed on a live index, takes effect on next merge.
+
+**Usage:**
+```json
+PUT /my-index
+{
+  "settings": {
+    "index.knn": true,
+    "index.knn.advanced.reorder_strategy": "kmeans",
+    "index.knn.advanced.reorder_kmeans_num_clusters": 500
+  }
+}
 ```
-index.knn.reorder.strategy = "bipartite" | "kmeans" | "none"
-index.knn.reorder.min_vectors = 10000
-index.knn.reorder.threads = 4
+
+### TODO 7b: Auto-detect similarity function ✅ DONE (2026-03-03)
+
+The `VectorReorderStrategy` interface accepts `VectorSimilarityFunction` as a parameter:
+```java
+int[] computePermutation(FloatVectorValues vectors, int numThreads, VectorSimilarityFunction similarityFunction);
 ```
+
+`SegmentReorderService` reads the similarity from `fieldInfo.getVectorSimilarityFunction()` and
+passes it through. Each strategy uses it appropriately:
+- **BP**: passes directly to `BpVectorReorderer.computeValueMap(vectors, similarityFunction, executor)`
+- **KMeans**: maps `MAXIMUM_INNER_PRODUCT` and `COSINE` → `METRIC_INNER_PRODUCT`, else → `METRIC_L2`
+
+No configuration needed — similarity is auto-detected from segment metadata.
 
 ### TODO 8: Handle `.faiss` file reordering
 
@@ -755,17 +780,17 @@ Our `close()` method handles the already-closed `flatVectorsWriter` gracefully v
 
 | File | Action | Description |
 |------|--------|-------------|
-| `VectorReorderStrategy.java` | NEW ✅ | Strategy interface for pluggable reordering |
-| `BipartiteReorderStrategy.java` | NEW ✅ | BP implementation of strategy |
-| `KMeansReorderStrategy.java` | NEW | KMeans implementation of strategy |
+| `VectorReorderStrategy.java` | NEW ✅ | Strategy interface — accepts `FloatVectorValues` + `VectorSimilarityFunction` |
+| `BipartiteReorderStrategy.java` (bpreorder/) | NEW ✅ | BP implementation, mmap-friendly, auto-detects similarity |
+| `KMeansReorderStrategy.java` (kmeansreorder/) | NEW ✅ | KMeans implementation, materializes to heap, auto-detects similarity |
 | `SegmentReorderService.java` | NEW ✅ | Orchestrator: threshold check, permutation, full `.vec` + `.vemf` + `.faiss` rewriting |
 | `NativeEngines990KnnVectorsWriter.java` | MODIFY ✅ | `fieldsToReorder` list in `mergeOneField()`, reorder loop in `finish()` after footer flush |
-| `NativeEngines990KnnVectorsFormat.java` | MODIFY ✅ | Accept/pass reorder strategy to writer |
-| `BasePerFieldKnnVectorsFormat.java` | MODIFY ✅ | Creates `BipartiteReorderStrategy` and passes to format |
+| `NativeEngines990KnnVectorsFormat.java` | MODIFY ✅ | Accept/pass reorder strategy to writer; reader tries reordered first |
+| `BasePerFieldKnnVectorsFormat.java` | MODIFY ✅ | Reads reorder settings, creates strategy via `getReorderStrategy()` |
+| `KNNSettings.java` | MODIFY ✅ | Added `index.knn.advanced.reorder_strategy` and `index.knn.advanced.reorder_kmeans_num_clusters` settings |
 | `KNN80CompoundFormat.java` | MODIFY ✅ | Removed all reorder logic, restored to original compound-file-only handling |
-| `NativeEngines990KnnVectorsWriterFlushTests.java` | MODIFY | Add reorder test cases |
-| `NativeEngines990KnnVectorsWriterMergeTests.java` | MODIFY | Add reorder test cases |
-| New integration test class | NEW | End-to-end reorder tests |
+| `BipartiteReorderStrategy.java` (root reorder/) | DELETED ✅ | Stale duplicate using old `float[][]` interface |
+| `KMeansReorderStrategy.java` (root reorder/) | DELETED ✅ | Stale duplicate using old `float[][]` interface |
 
 
 ---
@@ -844,3 +869,1168 @@ SegmentMerger.mergeVectorValues()
 Flush is NOT reordered. The `fieldsToReorder` list is only populated by `mergeOneField()`,
 not by `flush()`. Flush segments are typically small and will be merged later, at which point
 reordering applies.
+
+---
+
+## Manual Testing Results (2026-03-03): Dynamic Settings + Similarity Auto-Detection
+
+### Test: KMeans reorder with 32x compression, inner product
+
+**Setup:** 15k vectors (normalized, 3 clusters), 3 segments of 5k, force merge to 1.
+Index settings: `reorder_strategy=kmeans`, `reorder_kmeans_num_clusters=50`, `space_type=innerproduct`,
+`mode=on_disk`, `compression_level=32x`.
+
+**Result:** ✅ PASSED — identical doc IDs and scores before and after merge.
+Diagnostics confirmed: similarity=MAXIMUM_INNER_PRODUCT auto-detected, FAISS index type=IBMp (IdMap+Binary),
+permutation non-identity, reorder completed in 174ms.
+
+### Test: All strategy/space combinations with 32x compression
+
+15k vectors, 3 segments, force merge to 1. All combinations tested:
+
+| Strategy | Space Type | Result | Before Top-1 | After Top-1 |
+|----------|-----------|--------|---------------|-------------|
+| kmeans | l2 | ✅ identical | 6810=0.061473 | 6810=0.061473 |
+| kmeans | cosinesimil | ✅ identical | 4581=0.991069 | 4581=0.991069 |
+| bp | l2 | ✅ identical | 6810=0.061473 | 6810=0.061473 |
+| bp | cosinesimil | ✅ identical | 4581=0.991069 | 4581=0.991069 |
+| bp | innerproduct | ✅ identical | 4581=1.982139 | 4581=1.982139 |
+
+All 5 combinations produce identical search results before and after merge+reorder.
+
+### Settings verified on index
+
+```json
+"knn": {
+  "advanced": {
+    "reorder_kmeans_num_clusters": "50",
+    "reorder_strategy": "kmeans"
+  }
+}
+```
+
+### JNI note for EC2 deployment
+
+`FaissKMeansService` JNI native method must be compiled into `libopensearchknn_faiss.so`.
+Rebuild with:
+```bash
+cmake -S jni -B jni/build/release -DCONFIG_NMSLIB=OFF -DCMAKE_BUILD_TYPE=Release
+make -C jni/build/release -j$(nproc)
+```
+Ensure `java.library.path` points to the correct build directory.
+Fallback: `-Dkmeans.useJni=false` uses pure-Java KMeans (slower but no native dependency).
+
+---
+
+## Lucene Codec Details for Reordered Vector Files
+
+This section documents the custom Lucene codecs added/changed to write and read reordered `.vec`
+and `.vemf` files, the vector ordinal mapping structures, the skip list index, and the FAISS
+index reorder transformers.
+
+### Overview: What Changes on Disk After Reorder
+
+After `SegmentReorderService.reorderSegmentFiles()` runs, three files are rewritten:
+
+| File | Before Reorder | After Reorder |
+|------|---------------|---------------|
+| `.vec` | Vectors stored in original doc-ID order, standard `Lucene99FlatVectorsFormatData` codec header | Vectors stored in BP/KMeans permuted order, `ReorderedLucene99FlatVectorsFormatData` codec header |
+| `.vemf` | Standard `Lucene99FlatVectorsFormatMeta` codec header, field metadata only | `ReorderedLucene99FlatVectorsFormatMeta` codec header, field metadata + per-field doc→ord skip list index |
+| `.faiss` | HNSW neighbor lists reference original ordinals | HNSW neighbor lists remapped to new ordinals via `oldOrd2New[]`, entry point remapped |
+
+### 1. ReorderOrdMap — Vector Ordinal Mapping
+
+**File:** `memoryoptsearch/faiss/reorder/ReorderOrdMap.java`
+
+The core data structure that maps between original and reordered vector ordinals.
+
+```
+Original vectors : v0, v1, v2
+After reordering : v2, v0, v1
+
+newOrd2Old = [2, 0, 1]   — "new ord 0 was old ord 2"
+oldOrd2New = [1, 2, 0]   — "old ord 0 is now at new ord 1"
+```
+
+- `newOrd2Old[i]`: given a position `i` in the reordered `.vec` file, returns the original ordinal.
+  Used when writing reordered vectors (iterate new ords, fetch from old ords).
+- `oldOrd2New[j]`: given an original ordinal `j`, returns its position in the reordered file.
+  Used when remapping HNSW neighbor lists (neighbor IDs are old ords → translate to new ords).
+
+The constructor takes `newOrd2Old[]` (the permutation from `VectorReorderStrategy.computePermutation()`)
+and inverts it to produce `oldOrd2New[]`. Memory: `2 * 4 * N` bytes for both arrays.
+
+### 2. ReorderedFlatVectorsWriter — Writing Reordered `.vec` and `.vemf`
+
+**File:** `memoryoptsearch/faiss/reorder/ReorderedFlatVectorsWriter.java`
+
+Writes the reordered `.vec` (vector data) and `.vemf` (metadata + skip list) files. Called by
+`SegmentReorderService.rewriteVecFile()`.
+
+**Codec headers written:**
+- `.vemf`: `ReorderedLucene99FlatVectorsFormatMeta` (version 0)
+- `.vec`: `ReorderedLucene99FlatVectorsFormatData` (version 0)
+
+These custom codec names are what `ReorderedLucene99FlatVectorsReader111` checks on open to
+distinguish reordered segments from standard Lucene99 segments.
+
+**Write sequence per field (`ReorderedDenseFloatFlatFieldVectorsWriter.finish()`):**
+
+1. **Field metadata** into `.vemf`:
+   - `fieldInfo.number` (int)
+   - `vectorEncoding` ordinal (int)
+   - `similarityFunction` ordinal (int)
+   - `vectorDataOffset` (vlong) — byte offset into `.vec` where this field's vectors start
+   - `vectorDataLength` (vlong) — total bytes of vector data for this field
+   - `dimension` (vint)
+
+2. **Skip list metadata** into `.vemf`:
+   - `isDense` flag (byte, always 1 for dense)
+   - `maxDoc` (int) — highest doc ID
+   - `numLevel` (int, currently 4)
+   - `numDocsForGrouping` (int, currently 256)
+   - `groupFactor` (int, currently 4)
+
+3. **Fixed-block skip list index** into `.vemf` via `FixedBlockSkipListIndexBuilder`:
+   - Encodes the doc→ord mapping inline in the metadata file
+   - See section 3 below for details
+
+4. **Vector data** into `.vec`:
+   - Vectors written in reordered (permuted) order
+   - Each vector: `dimension * 4` bytes, little-endian floats
+   - `addValue(docID, vector)` records `(docID, ord)` pairs and writes the vector bytes
+   - The `docAndOrds[]` array is sorted by docID ascending before building the skip list
+
+**End-of-file markers:**
+- `.vemf`: sentinel field number `-1` (int), then `CodecUtil.writeFooter()`
+- `.vec`: `CodecUtil.writeFooter()`
+
+### 3. Skip List Index — Doc-ID to Reordered Ordinal Mapping
+
+After reordering, vector ordinals no longer match doc IDs (e.g., doc 5 might be at ordinal 1200
+in the reordered `.vec`). The skip list index provides O(1) lookup from doc ID to reordered ordinal.
+
+There are two implementations; the active one is `FixedBlockSkipListIndex`.
+
+#### 3a. FixedBlockSkipListIndexBuilder / FixedBlockSkipListIndexReader (Active)
+
+**Files:**
+- `memoryoptsearch/faiss/reorder/FixedBlockSkipListIndexBuilder.java`
+- `memoryoptsearch/faiss/reorder/FixedBlockSkipListIndexReader.java`
+
+A compact fixed-width encoding where each doc ID maps to its ordinal using the minimum number
+of bytes needed to represent the maximum ordinal value.
+
+**Write format (builder):**
+1. `maxDoc` (int) — written by builder constructor
+2. `numBytes` (int) — bytes per ordinal value: `4 - (Integer.numberOfLeadingZeros(maxDoc) / 8)`.
+   For 15k vectors, `numBytes = 2` (16 bits suffice for ords up to 65535).
+3. For each `(doc, ord)` pair in doc-ID order: `ord` encoded in `numBytes` little-endian bytes
+4. Padding to 8-byte alignment (0xFF fill bytes)
+
+**Read format (reader):**
+- Loads the entire ordinal array as `long[]` blocks for fast bit-extraction
+- `skipTo(doc)` → sets current doc (O(1), just stores the doc ID)
+- `getOrd()` → extracts the ordinal from the packed `long[]` using bit arithmetic:
+  ```
+  bitPos = doc * 8 * numBytesPerValue
+  word   = blocks[bitPos >>> 6]
+  shift  = bitPos % 64
+  result = (word >>> shift) & mask
+  ```
+  Handles cross-word boundaries when the value spans two `long` words.
+
+**Memory:** `numBytesPerValue * (maxDoc + 1)` bytes, padded to 8-byte boundary. For 15k vectors
+with 2-byte ords: ~30KB.
+
+#### 3b. DocIdOrdSkipListIndex / DocIdOrdSkipListIndexBuilder (Legacy, multi-level)
+
+**Files:**
+- `memoryoptsearch/faiss/reorder/DocIdOrdSkipListIndex.java`
+- `memoryoptsearch/faiss/reorder/DocIdOrdSkipListIndexBuilder.java`
+
+A multi-level skip list with bit-packed leaf blocks. Currently commented out in
+`ReorderedFlatVectorsWriter` but the code is present.
+
+**Structure:**
+- **Level 0 (leaf blocks):** Groups of `numDocsForGrouping` (256) ordinals, bit-packed via
+  `IntValuesBitPackingUtil`. Each block stores a 1-byte `bitsPerValue` header followed by
+  packed ordinal values.
+- **Level 1:** One entry per `groupFactor` (4) leaf blocks. Each entry contains:
+  - `lowerLevelStartOffset` (vlong) — byte offset into level-0 data
+  - Jump table: `groupFactor - 1` short values encoding accumulated leaf block sizes,
+    allowing binary skip within a group. The first entry packs `leafBlockSizeUpto` in the
+    low 4 bits (for the last block).
+- **Levels 2+:** One entry per `groupFactor^level` leaf blocks, containing `lowerLevelStartOffset`
+  pointing into the level below.
+
+**Lookup:** `Reader.skipTo(doc)` descends from the highest level, narrowing the search range
+by `numDocsForGrouping * groupFactor^level` docs at each level. At level 1, `findOrd(doc)`
+uses the jump table to locate the correct leaf block, then calls
+`IntValuesBitPackingUtil.getValue()` to extract the ordinal from the bit-packed block.
+
+### 4. IntValuesBitPackingUtil — Bit-Packed Integer Encoding
+
+**File:** `memoryoptsearch/faiss/reorder/IntValuesBitPackingUtil.java`
+
+Used by the legacy `DocIdOrdSkipListIndexBuilder` to pack ordinal values into minimal bits.
+
+- `bitsRequired(values)` → computes `PackedInts.bitsRequired(max(values))`
+- `writePackedInts(values, buffer, output)` → writes 1-byte `bitsPerValue` header + packed bytes
+- `pack(values, bitsPerValue, dest)` → packs int array into byte array, each value using exactly
+  `bitsPerValue` bits, little-endian bit order
+- `getValue(packed, offset, index, bitsPerValue)` → extracts a single value by computing
+  `bitPos = index * bitsPerValue`, loading 5 bytes from that position, shifting and masking
+
+### 5. ReorderedLucene99FlatVectorsReader111 — Reading Reordered `.vec` and `.vemf`
+
+**File:** `memoryoptsearch/faiss/reorder/ReorderedLucene99FlatVectorsReader111.java`
+
+Custom `FlatVectorsReader` that reads reordered vector files. Registered as the primary reader
+in `NativeEngines990KnnVectorsFormat.fieldsReader()` — if the `.vemf` file has the
+`ReorderedLucene99FlatVectorsFormatMeta` codec header, this reader is used; otherwise falls back
+to the standard `Lucene99FlatVectorsReader`.
+
+**Codec constants:**
+```java
+META_CODEC_NAME = "ReorderedLucene99FlatVectorsFormatMeta"
+VECTOR_DATA_CODEC_NAME = "ReorderedLucene99FlatVectorsFormatData"
+META_EXTENSION = "vemf"
+VECTOR_DATA_EXTENSION = "vec"
+VERSION_START = 0, VERSION_CURRENT = 0
+```
+
+**Initialization:**
+1. `readMetadata(state)` → opens `.vemf`, validates codec header via `CodecUtil.checkIndexHeader()`,
+   reads per-field entries via `readFields()`
+2. `openDataInput(state, ...)` → opens `.vec`, validates codec header, calls
+   `CodecUtil.retrieveChecksum()` to verify footer
+
+**Per-field FieldEntry (record):**
+Each field entry deserialized from `.vemf` contains:
+- `vectorEncoding`, `similarityFunction`, `vectorDataOffset`, `vectorDataLength`, `dimension`
+  — same as standard Lucene99 metadata
+- `FixedBlockSkipListIndexReader doc2OrdIndex` — the doc→ord mapping, deserialized inline
+  from the metadata stream
+
+**Vector access:**
+- `getFloatVectorValues(field)` → returns `ReorderedOffHeapFloatVectorValues111.DenseOffHeapVectorValues`
+- `getRandomVectorScorer(field, target)` → returns a scorer backed by the same reordered values
+
+**Fallback logic in `NativeEngines990KnnVectorsFormat.fieldsReader()`:**
+```java
+try {
+    // Try reordered codec header
+    return new ReorderedLucene99FlatVectorsReader111(state, scorer);
+} catch (CorruptIndexException | NullPointerException e) {
+    // Not a reordered segment — use standard reader
+    return flatVectorsFormat.fieldsReader(state);
+}
+```
+
+### 6. ReorderedOffHeapFloatVectorValues111 — Reordered Vector Values with Doc→Ord Translation
+
+**File:** `memoryoptsearch/faiss/reorder/ReorderedOffHeapFloatVectorValues111.java`
+
+Extends `FloatVectorValues` to provide vector access where vectors are stored in reordered
+(permuted) order on disk but accessed by doc ID.
+
+**Key method — `vectorValue(int targetOrd)`:**
+Seeks to `targetOrd * byteSize` in the `.vec` slice and reads `dimension` floats. This accesses
+vectors by their reordered ordinal directly (used by the HNSW graph scorer).
+
+**DocIndexIterator — doc-ID-based iteration with ord translation:**
+The iterator's `index()` method translates doc IDs to reordered ordinals via the skip list:
+```java
+public int index() {
+    if (doc != ordDoc) {
+        docIdOrdSkipListIndex.skipTo(doc);
+        ordDoc = doc;
+        ord = docIdOrdSkipListIndex.getOrd();
+    }
+    return ord;
+}
+```
+This is the critical path: when the HNSW graph traversal visits a node (by doc ID), the iterator
+translates it to the reordered ordinal so `vectorValue(ord)` reads the correct vector from the
+permuted `.vec` file.
+
+**VectorScorer:**
+`scorer(float[] query)` creates a copy of the values (for thread safety), wraps the iterator,
+and delegates scoring to `FlatVectorsScorer.getRandomVectorScorer()`.
+
+### 7. FAISS Index Reorder Transformers — Remapping `.faiss` Files
+
+**Files:**
+- `memoryoptsearch/faiss/reorder/FaissIndexReorderTransformer.java` — abstract base, dispatch via `IndexTypeToFaissIndexReordererMapping`
+- `memoryoptsearch/faiss/reorder/IndexTypeToFaissIndexReordererMapping.java` — maps FAISS index type strings to transformer classes
+- `memoryoptsearch/faiss/reorder/FaissHNSWIndexReorderer.java` — HNSW float index (`IHNF`, `IHNS`)
+- `memoryoptsearch/faiss/reorder/FaissBinaryHnswIndexReorderer.java` — HNSW binary index (`IBHF`)
+- `memoryoptsearch/faiss/reorder/FaissHnswReorderer.java` — core HNSW graph reorder logic
+- `memoryoptsearch/faiss/reorder/FaissIdMapIndexReorderer.java` — IdMap wrapper (`IXMP`, `IBMP`)
+- `memoryoptsearch/faiss/reorder/FaissIndexFloatFlatReorderer.java` — flat float index (`IXF2`, `IXFI`)
+- `memoryoptsearch/faiss/reorder/FaissIndexBinaryFlatReorderer.java` — flat binary index (`IBXF`)
+
+**Dispatch:** `FaissIndexReorderTransformer.transform()` loads the FAISS index structure via
+`FaissIndex.load(indexInput)`, looks up the transformer from `IndexTypeToFaissIndexReordererMapping`,
+and calls `doTransform()`. The mapping supports all FAISS index types used by k-NN:
+
+| FAISS Type | Class | Description |
+|-----------|-------|-------------|
+| `IXMP` | `FaissIdMapIndexReorderer` | Float IdMap (wraps HNSW or flat) |
+| `IBMP` | `FaissIdMapIndexReorderer` | Binary IdMap |
+| `IHNF` / `IHNS` | `FaissHNSWIndexReorderer` | Float HNSW (FP32 / SQ) |
+| `IBHF` | `FaissBinaryHnswIndexReorderer` | Binary HNSW |
+| `IXF2` / `IXFI` | `FaissIndexFloatFlatReorderer` | Float flat (FP32 / FP16) |
+| `IBXF` | `FaissIndexBinaryFlatReorderer` | Binary flat |
+
+#### 7a. FaissHnswReorderer — HNSW Graph Neighbor List Remapping
+
+**File:** `memoryoptsearch/faiss/reorder/FaissHnswReorderer.java`
+
+The most complex transformer. Rewrites the entire HNSW graph structure with remapped ordinals.
+
+**What gets rewritten (in order):**
+
+1. **assignProbas** — copied verbatim (level assignment probabilities, not ord-dependent)
+
+2. **cumNumberNeighborPerLevel** — copied verbatim (structural, not ord-dependent)
+
+3. **Levels array** — reordered: for each new ord `i`, writes the level of `newOrd2Old[i]`.
+   This ensures the level array matches the new ordinal order.
+
+4. **Offsets array** — recomputed: iterates new ords, accumulates neighbor list sizes from the
+   old ords. Written as raw `long[]` (not DirectMonotonic — the original uses
+   `DirectMonotonicReader` but the reordered version writes plain longs).
+
+5. **Neighbors array** — the core remapping:
+   - For each `oldOrd` in `newOrd2Old` order:
+     - For each HNSW level of that vector:
+       - Read neighbor IDs from the original file
+       - Remap each neighbor: `newNeighborId = oldOrd2New[originalNeighborId]`
+       - Preserve `-1` sentinel values (unfilled neighbor slots)
+       - Sort valid neighbors ascending, push `-1` to end
+       - Write remapped neighbor list
+
+6. **Entry point** — remapped: `oldOrd2New[originalEntryPoint]`
+
+7. **Scalar fields** — copied verbatim: `maxLevel`, `efConstruct`, `efSearch`, dummy field
+
+#### 7b. FaissIdMapIndexReorderer — ID Map Remapping
+
+**File:** `memoryoptsearch/faiss/reorder/FaissIdMapIndexReorderer.java`
+
+Rewrites the `ordToDocs` mapping (FAISS's `id_map` that maps vector ordinals to external IDs/doc IDs).
+
+1. Recursively transforms the nested index (HNSW or flat) via `transform(nestedIndex, ...)`
+2. Rewrites the ID map: for each new ord, writes `ordToDocs[newOrd2Old[newOrd]]` — the doc ID
+   that was at the old ordinal position
+
+#### 7c. FaissIndexFloatFlatReorderer / FaissIndexBinaryFlatReorderer — Flat Vector Remapping
+
+Rewrites the raw vector storage in permuted order. For each new ord, reads the vector at
+`newOrd2Old[newOrd]` from the original and writes it to the output. This ensures the flat
+vector storage in the `.faiss` file matches the reordered HNSW graph.
+
+### 8. Integration Point: NativeEngines990KnnVectorsWriter
+
+**File:** `index/codec/KNN990Codec/NativeEngines990KnnVectorsWriter.java`
+
+The writer orchestrates the reorder during merge via two hooks:
+
+**In `mergeOneField()`** — marks fields for reorder:
+```java
+if (reorderStrategy != null && totalLiveDocs >= SegmentReorderService.MIN_VECTORS_FOR_REORDER) {
+    fieldsToReorder.add(fieldInfo);
+}
+```
+
+**In `finish()`** — executes reorder after footers are written:
+```java
+flatVectorsWriter.finish();   // writes .vec/.vemf codec footers
+flatVectorsWriter.close();    // flushes IndexOutput buffers to disk
+
+for (FieldInfo fieldInfo : fieldsToReorder) {
+    SegmentReorderService reorderService = new SegmentReorderService(
+        segmentWriteState, fieldInfo, reorderStrategy
+    );
+    reorderService.reorderSegmentFiles();  // rewrites .vec + .vemf + .faiss
+}
+```
+
+**In `fieldsReader()`** (`NativeEngines990KnnVectorsFormat.java`) — tries reordered reader first:
+```java
+try {
+    return new ReorderedLucene99FlatVectorsReader111(state, scorer);
+} catch (CorruptIndexException | NullPointerException e) {
+    return flatVectorsFormat.fieldsReader(state);  // fallback to standard
+}
+```
+
+### 9. SegmentReorderService — Orchestrator
+
+**File:** `memoryoptsearch/faiss/reorder/SegmentReorderService.java`
+
+Coordinates the full reorder of a segment's vector files:
+
+1. **Compute permutation:** Opens finalized `.vec` via `Lucene99FlatVectorsReader` (mmap-backed),
+   calls `strategy.computePermutation(floatVectorValues, numThreads, similarityFunction)`.
+   The similarity function is auto-detected from `fieldInfo.getVectorSimilarityFunction()`.
+
+2. **Build ReorderOrdMap:** `new ReorderOrdMap(permutation)` — inverts `newOrd2Old` → `oldOrd2New`.
+
+3. **Rewrite `.vec` + `.vemf`:** Opens original `.vec` via `Lucene99FlatVectorsReader`, creates
+   `ReorderedFlatVectorsWriter` for the `.reorder` temp files, iterates new ords writing
+   `vectorValues.vectorValue(newOrd2Old[i])`, builds skip list via `FixedBlockSkipListIndexBuilder`.
+   Atomic rename replaces originals.
+
+4. **Rewrite `.faiss`:** Opens original via `FaissIndex.load()`, dispatches to the appropriate
+   `FaissIndexReorderTransformer` which remaps HNSW neighbor lists, ID maps, and flat vectors.
+   Atomic rename replaces original.
+
+**IOContext handling:** Wraps the directory with a `FilterDirectory` that overrides `createOutput()`
+to use `state.context` (which is `IOContext.MERGE` during merge), avoiding the
+`ConcurrentMergeScheduler` assertion that all writes use merge context.
+
+### 10. File Format Summary
+
+**Reordered `.vemf` layout (per field):**
+```
+[CodecUtil header: "ReorderedLucene99FlatVectorsFormatMeta", version 0]
+For each field:
+  fieldNumber          : int
+  vectorEncoding       : int (ordinal)
+  similarityFunction   : int (ordinal)
+  vectorDataOffset     : vlong
+  vectorDataLength     : vlong
+  dimension            : vint
+  isDense              : byte (1)
+  maxDoc               : int
+  numLevel             : int (4)
+  numDocsForGrouping   : int (256)
+  groupFactor          : int (4)
+  --- FixedBlockSkipListIndex ---
+  maxDoc               : int (repeated)
+  numBytesPerValue     : int
+  ordinals[0..maxDoc]  : numBytesPerValue bytes each, little-endian
+  padding              : 0xFF bytes to 8-byte alignment
+  --- end skip list ---
+sentinel: -1           : int
+[CodecUtil footer]
+```
+
+**Reordered `.vec` layout:**
+```
+[CodecUtil header: "ReorderedLucene99FlatVectorsFormatData", version 0]
+For each field:
+  vectors[0..N-1]      : dimension * 4 bytes each, little-endian floats
+                          stored in reordered (permuted) order
+[CodecUtil footer]
+```
+
+---
+
+## KMeans Reorder OOM Diagnosis (2026-03-03)
+
+### Cluster Setup
+- 2-node cluster, 32GB RAM total
+- Cohere-10M dataset, 5 shards, force merged to 1 segment/shard (~2M vectors/shard)
+- Separate benchmarking utility
+- Parent circuit breaker limit: 14.2GB
+
+### Symptoms
+
+1. **Circuit breaker tripping on both HTTP and transport layers:**
+```
+CircuitBreakingException: [parent] Data too large, data for [<http_request>] would be [15320590184/14.2gb],
+which is larger than the limit of [15300820992/14.2gb]
+```
+
+2. **FAISS clustering warning — too few points for k=1500:**
+```
+WARNING clustering 35496 points to 1500 centroids: please provide at least 58500 training points
+```
+
+3. **Corrupt `.faiss` files from truncated writes:**
+```
+CorruptIndexException: codec footer mismatch (file truncated?): actual footer=-581566464 vs expected footer=-1071082520
+(resource=MemorySegmentIndexInput(path="..._d_165_target_field.faiss"))
+```
+
+4. **Shard failures from flush on corrupt files:**
+```
+FlushFailedEngineException → AllocationService failing shard
+```
+
+### Root Cause 1: KMeans materializes ALL vectors into Java heap
+
+`KMeansReorderStrategy.computePermutation()` copies every vector into a `float[][]`:
+
+```java
+float[][] heapVectors = new float[n][];
+for (int i = 0; i < n; i++) {
+    float[] src = vectors.vectorValue(i);
+    heapVectors[i] = new float[src.length];
+    System.arraycopy(src, 0, heapVectors[i], 0, src.length);
+}
+```
+
+Then `FaissKMeansService.storeVectors()` copies it AGAIN into native memory via
+`JNICommons.storeVectorData()`.
+
+For a 2M-vector shard at 1024 dims:
+- `float[][]` on heap: 2M × 1024 × 4 bytes = **~8GB**
+- Native copy via JNI: another **~8GB**
+- Total: ~16GB for a single shard reorder, exceeding the 14.2GB circuit breaker
+
+This saturates the heap, leaving no room for concurrent bulk writes, HTTP requests, or
+transport operations — triggering the circuit breaker on everything else.
+
+**Contrast with BP:** `BipartiteReorderStrategy` passes `FloatVectorValues` directly to
+`BpVectorReorderer.computeValueMap()`, which reads vectors via mmap. Heap overhead is only
+`2 * 4 * N` bytes for metadata arrays (~16MB for 2M vectors). KMeans has no such path —
+both JNI and pure-Java require contiguous `float[][]`.
+
+### Root Cause 2: k not capped for small segments
+
+The warning `clustering 35496 points to 1500 centroids` means a segment with only 35,496
+vectors is being clustered with k=1500. FAISS wants at least `k * min_points_per_centroid`
+(default 39) = 58,500 training points. The clustering still runs but quality is poor and
+memory is wasted on too many centroids.
+
+This is either an intermediate merge segment before force merge completes, or a shard with
+fewer vectors than expected.
+
+### Root Cause 3: Corruption cascade from OOM
+
+1. Circuit breaker trips during bulk write → shard operations fail mid-write
+2. `.faiss` file gets truncated (incomplete write during flush/merge)
+3. Next flush sees corrupt `.faiss` → `CorruptIndexException: codec footer mismatch`
+4. `FlushFailedEngineException` → shard marked as failed
+
+### Fix 1: Cap k based on segment size
+
+In `KMeansReorderStrategy.computePermutation()`, reduce k when there aren't enough points:
+
+```java
+int minPointsPerCentroid = 39;
+if (n < effectiveK * minPointsPerCentroid) {
+    effectiveK = Math.max(1, n / minPointsPerCentroid);
+    log.info("Reduced k from {} to {} for {} vectors (min {} points/centroid)", k, effectiveK, n, minPointsPerCentroid);
+}
+```
+
+Additionally, return identity permutation when segment is too small for meaningful clustering:
+
+```java
+if (n < 2 * effectiveK) {
+    log.warn("Skipping KMeans reorder: {} vectors < 2 * {} centroids", n, effectiveK);
+    int[] identity = new int[n];
+    for (int i = 0; i < n; i++) identity[i] = i;
+    return identity;
+}
+```
+
+### Fix 2: Stream vectors to native memory instead of heap-copying
+
+Eliminate the `float[][]` by writing vectors directly to native memory from the mmap-backed
+`FloatVectorValues`:
+
+```java
+int n = vectors.size();
+int dim = vectors.vectorValue(0).length;
+long addr = JNICommons.allocateVectorData((long) n * dim);
+try {
+    for (int i = 0; i < n; i++) {
+        float[] vec = vectors.vectorValue(i);  // mmap read, no heap copy retained
+        JNICommons.copyVectorToNative(addr, i, vec, dim);  // write directly to native
+    }
+    KMeansResult result = FaissKMeansService.kmeansWithDistances(addr, n, dim, effectiveK, niter, metricType);
+    return ClusterSorter.sortByCluster(result.assignments(), result.distances(), metricType);
+} finally {
+    JNICommons.freeVectorData(addr);
+}
+```
+
+This eliminates ~8GB of Java heap usage. Requires a new JNI method `copyVectorToNative`
+(trivial: `memcpy` into offset within the allocated buffer).
+
+**Alternative: Subsample for clustering, assign all vectors to nearest centroid:**
+
+```java
+int sampleSize = Math.min(n, effectiveK * 50);
+float[][] sample = new float[sampleSize][];
+int step = n / sampleSize;
+for (int i = 0; i < sampleSize; i++) {
+    sample[i] = vectors.vectorValue(i * step).clone();
+}
+// Cluster sample, then stream-assign all vectors to nearest centroid
+```
+
+Caps heap at `sampleSize * dim * 4` instead of `n * dim * 4`.
+
+### Fix 3: Increase circuit breaker / heap for benchmarking (workaround)
+
+```json
+PUT _cluster/settings
+{
+  "transient": {
+    "indices.breaker.total.limit": "98%"
+  }
+}
+```
+
+Or increase JVM heap: `-Xmx24g` per node (leaving 8GB for OS page cache + native memory).
+This is a band-aid — the real fix is Fix 2.
+
+### Fix 4: Combine clusters across merge iterations (longer-term)
+
+Currently each merge re-materializes and re-clusters from scratch. For tiered merges where
+a segment gets merged multiple times, this is wasteful. The cluster assignments from the
+source segments could be carried forward and only the boundary vectors re-assigned.
+
+### Action Items
+
+- [ ] Implement Fix 1 (cap k) — immediate, prevents the FAISS warning and wasted memory
+- [ ] Implement Fix 2 (stream to native) — eliminates the 8GB heap copy, required for large segments
+- [ ] Validate with 2M-vector shard after fixes — confirm circuit breaker no longer trips
+- [ ] Investigate the 35,496-vector segment — is this an intermediate merge or a small shard?
+
+---
+
+## Leveraging OffHeapVectorTransfer for KMeans Reorder (2026-03-03)
+
+### Existing Infrastructure
+
+`MemOptimizedNativeIndexBuildStrategy` already solves the "stream vectors to native memory
+without heap-copying all of them" problem via `OffHeapVectorTransfer`:
+
+1. `OffHeapVectorTransfer` batches vectors into a small Java-side `List<float[]>` (size
+   controlled by `knn.vector_streaming_memory.limit`, default 1% of heap)
+2. When the batch is full, `OffHeapFloatVectorTransfer.transfer()` calls
+   `JNICommons.storeVectorData(addr, batch, capacity, append)` to copy the batch to native memory
+3. The Java-side batch is cleared → GC'd. Vectors accumulate only in native memory.
+
+For HNSW building, `append=false` is used (each batch overwrites the buffer, consumed by
+`JNIService.insertToIndex()` incrementally). But `storeVectorData` with `append=true` grows
+the native buffer, which is exactly what KMeans needs — all vectors contiguous in native memory.
+
+### Key Difference from HNSW Build
+
+- **HNSW:** Vectors consumed incrementally per batch → `append=false`, buffer reused
+- **KMeans:** FAISS needs all vectors at once for clustering → `append=true`, buffer grows
+
+But the heap savings are the same: only one batch of vectors lives on Java heap at a time
+(~1% of heap), not the full `float[][]` (~8GB).
+
+### Approach: Use OffHeapVectorTransfer with append=true
+
+Replace the heap materialization in `KMeansReorderStrategy` with batched streaming:
+
+```java
+@Override
+public int[] computePermutation(FloatVectorValues vectors, int numThreads,
+                                VectorSimilarityFunction similarityFunction) throws IOException {
+    int n = vectors.size();
+    int dim = vectors.vectorValue(0).length;
+    int effectiveK = Math.min(k, n);
+
+    // Cap k for small segments
+    int minPointsPerCentroid = 39;
+    if (n < effectiveK * minPointsPerCentroid) {
+        effectiveK = Math.max(1, n / minPointsPerCentroid);
+    }
+    if (n < 2 * effectiveK) {
+        return identityPermutation(n);
+    }
+
+    int metricType = (similarityFunction == VectorSimilarityFunction.MAXIMUM_INNER_PRODUCT
+        || similarityFunction == VectorSimilarityFunction.COSINE)
+        ? KMeansClusterer.METRIC_INNER_PRODUCT
+        : KMeansClusterer.METRIC_L2;
+
+    int bytesPerVector = dim * Float.BYTES;
+
+    // Stream vectors from mmap → native memory in batches via OffHeapVectorTransfer.
+    // Only one batch lives on Java heap at a time (~1% of heap).
+    // append=true grows the native buffer so all vectors are contiguous for FAISS kmeans.
+    try (OffHeapFloatVectorTransfer transfer = new OffHeapFloatVectorTransfer(bytesPerVector, n)) {
+        for (int i = 0; i < n; i++) {
+            float[] vec = vectors.vectorValue(i);
+            transfer.transfer(vec, true);  // append=true: accumulate in native memory
+        }
+        transfer.flush(true);
+
+        long vectorAddress = transfer.getVectorAddress();
+        KMeansResult result = FaissKMeansService.kmeansWithDistances(
+            vectorAddress, n, dim, effectiveK, niter, metricType
+        );
+        return ClusterSorter.sortByCluster(result.assignments(), result.distances(), metricType);
+    }
+    // OffHeapVectorTransfer.close() calls freeVectorData() — no manual cleanup needed
+}
+```
+
+### Memory Comparison
+
+| Approach | Java Heap | Native Memory |
+|----------|-----------|---------------|
+| Current (`float[][]` + JNI copy) | ~8GB (2M × 1024 × 4) + batch overhead | ~8GB (JNI copy) |
+| OffHeapVectorTransfer (append=true) | ~1% of heap (one batch) | ~8GB (accumulated) |
+
+The native memory usage is the same — FAISS needs all vectors contiguous for kmeans. But the
+Java heap drops from ~8GB to ~1% of heap (~150MB with 15GB heap). This keeps the circuit
+breaker happy since it only tracks Java heap, not native memory.
+
+### Caveat: Native Memory Pressure
+
+The ~8GB native allocation still exists. On a 32GB 2-node cluster with 15GB JVM heap per node,
+that leaves ~17GB for OS + native. A single 2M-vector shard reorder consuming 8GB native is
+tight but feasible. Two concurrent shard reorders would be problematic.
+
+Mitigation: reorder shards sequentially (already the case — `finish()` runs per-segment in the
+merge thread, and merges are serialized per shard).
+
+### Note on OffHeapVectorTransfer.transfer() Semantics
+
+`transfer(vec, append)` adds `vec` to an internal `List<float[]>`. When the list hits
+`transferLimit`, it calls `JNICommons.storeVectorData(addr, batch, capacity, append)` and
+clears the list. The `float[]` references in the cleared list become eligible for GC.
+
+With `append=true`, `storeVectorData` grows the native buffer to accommodate the new batch.
+The returned address may change if reallocation occurs, but `OffHeapVectorTransfer` tracks
+the latest address via `getVectorAddress()`.
+
+With `append=false` (HNSW path), the buffer is overwritten — same address, same capacity.
+
+---
+
+## Decreasing Memory Requirements for KMeans
+
+### Current Problem
+
+`KMeansReorderStrategy` materializes all vectors into a `float[][]` on Java heap (~8GB for
+2M × 1024-dim), then `FaissKMeansService.storeVectors()` copies them again into native memory
+(~8GB). Total: ~16GB for a single shard reorder.
+
+### FAISS KMeans Access Pattern Analysis
+
+Inspecting `Clustering::train_encoded()` in `faiss/Clustering.cpp`, the algorithm performs
+`niter` (default 25) iterations, each with two phases:
+
+1. **Assignment:** `index.search(nx, x, 1, dis, assign)` — sequential scan of all vectors
+   against `k` centroids
+2. **Update:** `compute_centroids(d, k, nx, ..., x, ...)` — sequential scan accumulating
+   vectors into centroid sums: `x + i * line_size`
+
+Both phases access the vector pointer `x` as a `const uint8_t*` with sequential/strided reads.
+FAISS does not require the data to be in heap or native-allocated memory — it just dereferences
+the pointer. An mmap'd region works identically.
+
+Additionally, FAISS has a built-in subsample: when `nx > k * max_points_per_centroid` (default
+256), it subsamples to `k * 256` points before training. With k=1500, that's 384k vectors
+(~1.5GB), not the full 2M.
+
+### Option 1: mmap the .vec file and pass pointer directly to FAISS JNI (zero-copy)
+
+The `.vec` file is already finalized on disk when `SegmentReorderService` runs (after
+`flatVectorsWriter.finish()` + `close()`). Lucene's `MMapDirectory` maps it via
+`MemorySegmentIndexInput`, which wraps a `java.lang.foreign.MemorySegment`.
+
+Approach:
+1. Open the `.vec` file via `directory.openInput()` → get `MemorySegmentIndexInput`
+2. Extract the native address: `MemorySegment.address()` + offset to vector data start
+3. Pass directly to `FaissKMeansService.kmeansWithDistances(addr, n, dim, k, niter, metric)`
+4. FAISS reads vectors via page faults into OS page cache — no heap, no native allocation
+
+Memory profile:
+
+| | BP | KMeans (mmap) | KMeans (current) |
+|---|---|---|---|
+| Java heap | ~16MB | ~16MB (`int[n]` assign + `float[n]` dis) | ~8GB (`float[][]`) |
+| Native alloc | 0 | 0 | ~8GB (JNI copy) |
+| OS page cache | on-demand | on-demand | N/A |
+| Total pressure | ~16MB | ~16MB | ~16GB |
+
+KMeans with mmap would have essentially the same memory profile as BP.
+
+**Caveats:**
+- FAISS does `niter` full sequential scans. For 2M × 1024 × 4 = 8GB of vector data, that's
+  25 × 8GB = 200GB of sequential reads. Sequential access pattern is readahead-friendly, but
+  if the file exceeds available page cache, later iterations re-fault.
+- With the built-in subsample (k=1500 → 384k points → ~1.5GB), only the subsample is scanned
+  repeatedly. The full dataset is scanned once for the initial subsample copy.
+- Requires extracting the raw mmap address from Lucene's `MemorySegmentIndexInput`, which
+  uses `java.lang.foreign` APIs (Panama). The address must account for the codec header offset
+  to point at the start of vector data, not the file header.
+- The `.vec` file stores vectors in the original (pre-reorder) ordinal order. FAISS kmeans
+  only needs to read them — ordinal order doesn't matter for clustering.
+
+**Implementation sketch:**
+```java
+// In KMeansReorderStrategy or SegmentReorderService:
+IndexInput vecInput = directory.openInput(vecDataFileName, IOContext.DEFAULT);
+// Navigate past codec header to vector data start
+long vectorDataOffset = fieldEntry.vectorDataOffset;
+
+// Extract mmap address — requires Lucene internals access
+// MemorySegmentIndexInput wraps MemorySegment which has .address()
+long mmapAddress = getMmapAddress(vecInput) + vectorDataOffset;
+
+KMeansResult result = FaissKMeansService.kmeansWithDistances(
+    mmapAddress, n, dim, effectiveK, niter, metricType
+);
+```
+
+### Option 2: OffHeapVectorTransfer with append=true (streaming to native)
+
+Use the existing `OffHeapVectorTransfer` infrastructure from `MemOptimizedNativeIndexBuildStrategy`
+to stream vectors from mmap → native memory in batches, avoiding the `float[][]` heap copy.
+
+- `OffHeapFloatVectorTransfer` batches vectors into a small `List<float[]>` (size controlled
+  by `knn.vector_streaming_memory.limit`, default 1% of heap)
+- With `append=true`, `JNICommons.storeVectorData()` grows the native buffer
+- Each batch is cleared after transfer → GC'd. Only one batch on heap at a time.
+
+Memory profile:
+
+| | KMeans (OffHeapTransfer) | KMeans (current) |
+|---|---|---|
+| Java heap | ~150MB (one batch) + ~16MB (results) | ~8GB |
+| Native alloc | ~8GB (accumulated vectors) | ~8GB |
+| Total pressure | ~8.2GB (mostly native) | ~16GB |
+
+Eliminates the heap pressure (circuit breaker safe) but still allocates ~8GB native for the
+contiguous vector buffer that FAISS needs.
+
+### Option 3: Pure-Java KMeans on subsampled vectors + mmap assignment pass
+
+Cluster a subsample on heap, then assign all vectors via streaming mmap reads:
+
+1. Sample `k * 50` vectors into heap (~1500 × 50 × 1024 × 4 = ~300MB)
+2. Run `KMeansClusterer.cluster()` on the sample (pure Java, no JNI)
+3. Stream all vectors via `FloatVectorValues.vectorValue(i)` (mmap), compute nearest centroid
+   and distance for each — only one vector on heap at a time
+4. Build assignments + distances arrays (`int[n]` + `float[n]` = ~16MB)
+5. Pass to `ClusterSorter.sortByCluster()`
+
+Memory profile:
+
+| | KMeans (subsample + mmap assign) |
+|---|---|
+| Java heap | ~300MB (sample) + ~16MB (results) |
+| Native alloc | 0 |
+| Total pressure | ~316MB |
+
+This is the lowest memory option and doesn't require any JNI changes. The tradeoff is
+clustering quality — subsampling may produce slightly worse centroids than training on all
+vectors. However, FAISS itself subsamples when `nx > k * 256`, so this is consistent with
+FAISS's own approach.
+
+### Recommendation
+
+Option 1 (mmap pointer) is the cleanest long-term solution — zero memory overhead, leverages
+the existing mmap'd `.vec` file, and FAISS's sequential access pattern is readahead-friendly.
+However, it requires extracting raw addresses from Lucene's `MemorySegmentIndexInput` which
+couples to Lucene internals.
+
+Option 3 (subsample + mmap assign) is the easiest to implement today — no JNI changes, no
+Lucene internals, ~316MB total memory, and consistent with FAISS's own subsampling behavior.
+
+Option 2 (OffHeapVectorTransfer) is a middle ground — uses existing infrastructure, eliminates
+heap pressure, but still needs ~8GB native.
+
+### Action Items
+
+- [ ] Implement Option 3 (subsample + mmap assign) as immediate fix — lowest risk, no JNI changes
+- [ ] Prototype Option 1 (mmap pointer passthrough) for long-term — benchmark page fault overhead
+      vs native memory copy for `niter=25` iterations
+- [ ] Cap k based on segment size regardless of which option is chosen (Fix 1 from OOM diagnosis)
+
+---
+
+## Implementation Plan: mmap Passthrough for KMeans (Option 1)
+
+### Goal
+
+Eliminate the ~8GB Java heap allocation in `KMeansReorderStrategy` by passing the mmap'd
+`.vec` file address directly to FAISS `Clustering::train()` via JNI. FAISS only needs a
+`const float*` pointer — it doesn't care whether it points to heap, native, or mmap'd memory.
+
+### How FAISS KMeans Actually Uses the Vector Pointer
+
+From `Clustering::train_encoded()` in `faiss/Clustering.cpp`:
+
+1. **Subsample check** (line 314): if `nx > k * max_points_per_centroid` (default 256),
+   FAISS calls `subsample_training_set()` which:
+   - Allocates a NEW native buffer of size `k * 256 * dim * 4` bytes (~1.5GB for k=1500, dim=1024)
+   - Copies `k * 256` randomly selected vectors from the input pointer into this buffer
+   - Replaces `x` pointer with the new buffer — all subsequent iterations use the subsample
+   - The original input pointer is only read once during this copy (random access pattern)
+
+2. **Training loop** (25 iterations): operates entirely on the 1.5GB subsample buffer.
+   Never touches the original input pointer again.
+
+3. **Back in JNI** (`FaissKMeansService.cpp` line 56): after `clustering.train()` returns,
+   `index->search(numVectors, vectors, 1, ...)` does one final sequential pass over ALL
+   vectors to assign each to its nearest centroid.
+
+**Total reads from the input pointer: 2 passes** — one random-access (subsample), one
+sequential (final assignment). The 25 expensive iterations run on FAISS's internal 1.5GB copy.
+
+### Memory Profile Comparison (2M vectors × 1024 dims)
+
+| Phase | Current | mmap approach |
+|-------|---------|---------------|
+| Java `float[][]` | 8GB heap | 0 |
+| JNI `storeVectors` native copy | 8GB native | 0 |
+| FAISS internal subsample | 1.5GB native (inside train) | 1.5GB native (inside train) |
+| Final assignment arrays | 16MB (int[2M] + float[2M]) | 16MB |
+| **Total** | **~17.5GB** | **~1.5GB** (FAISS internal, auto-freed) |
+
+### Existing Infrastructure
+
+The k-NN plugin already extracts mmap addresses from Lucene's `MemorySegmentIndexInput`:
+
+- `MemorySegmentAddressExtractorJDK21` — uses reflection to get `MemorySegment[]` from
+  `IndexInput`, then calls `MemorySegment.address()` and `MemorySegment.byteSize()`
+- `MMapFloatVectorValues` — stores `long[] addressAndSize` for native scoring code
+- `AbstractMemorySegmentAddressExtractor.extractAddressAndSize(indexInput, baseOffset, requestSize)`
+  — returns `long[]` of `[addr0, size0, addr1, size1, ...]` accounting for multi-segment mmap
+
+The `.vec` file opened by `Lucene99FlatVectorsReader` is an `IndexInput` from `MMapDirectory`.
+The vector data starts at `fieldEntry.vectorDataOffset` bytes from the start of the file
+(after the codec header). The data is contiguous: `n * dim * Float.BYTES` bytes.
+
+### Implementation Steps
+
+#### Step 1: Add `computePermutationMMap` to `KMeansReorderStrategy`
+
+New method that accepts an `IndexInput` + offset instead of `FloatVectorValues`:
+
+```java
+/**
+ * Compute permutation using mmap'd vector data directly — zero Java heap for vectors.
+ * Falls back to the heap-based path if mmap address extraction fails.
+ */
+public int[] computePermutationMMap(
+    IndexInput vecData, long vectorDataOffset, long vectorDataLength,
+    int numVectors, int dimension, int numThreads,
+    VectorSimilarityFunction similarityFunction
+) throws IOException {
+    int effectiveK = capK(numVectors);
+    if (effectiveK < 2) return identityPermutation(numVectors);
+
+    int metricType = toFaissMetric(similarityFunction);
+
+    // Extract mmap address from the IndexInput
+    MemorySegmentAddressExtractor extractor = new MemorySegmentAddressExtractorJDK21();
+    long[] addressAndSize = extractor.extractAddressAndSize(
+        vecData, vectorDataOffset, vectorDataLength
+    );
+
+    if (addressAndSize == null || addressAndSize.length != 2) {
+        // Multi-segment mmap or extraction failed — fall back to heap path
+        log.warn("mmap address extraction failed, falling back to heap-based KMeans");
+        // ... fall back to existing computePermutation() ...
+    }
+
+    // Single contiguous mmap segment — pass address directly to FAISS
+    long mmapAddress = addressAndSize[0];
+
+    KMeansResult result = FaissKMeansService.kmeansWithDistancesMMap(
+        mmapAddress, numVectors, dimension, effectiveK, niter, metricType
+    );
+    return ClusterSorter.sortByCluster(result.assignments(), result.distances(), metricType);
+}
+```
+
+#### Step 2: Add `kmeansWithDistancesMMap` JNI method
+
+New native method that takes a raw pointer instead of a `std::vector<float>*`:
+
+**Java side** (`FaissKMeansService.java`):
+```java
+/**
+ * Run k-means on mmap'd vector data. The address points directly to contiguous float data
+ * (not a std::vector wrapper). FAISS reads from this pointer; it is NOT freed by this method.
+ */
+public static native KMeansResult kmeansWithDistancesMMap(
+    long mmapAddress, int numVectors, int dimension,
+    int numClusters, int numIterations, int metricType
+);
+```
+
+**JNI side** (`org_opensearch_knn_...FaissKMeansService.cpp`):
+```cpp
+JNIEXPORT jobject JNICALL Java_..._kmeansWithDistancesMMap(
+    JNIEnv* env, jclass cls,
+    jlong mmapAddress, jint numVectors, jint dimension,
+    jint numClusters, jint numIterations, jint metricType)
+{
+    try {
+        // mmapAddress points directly to float data (not std::vector*)
+        float* vectors = reinterpret_cast<float*>(mmapAddress);
+
+        faiss::ClusteringParameters cp;
+        cp.niter = numIterations;
+        cp.verbose = false;
+
+        faiss::Clustering clustering(dimension, numClusters, cp);
+
+        faiss::Index* index;
+        if (metricType == 1) {
+            index = new faiss::IndexFlatIP(dimension);
+        } else {
+            index = new faiss::IndexFlatL2(dimension);
+        }
+
+        // FAISS reads from `vectors` pointer:
+        //   1. subsample_training_set: random-access read of k*256 vectors → copies to internal buffer
+        //   2. training loop: operates on internal buffer only
+        clustering.train(numVectors, vectors, *index);
+
+        // Final assignment: one sequential pass over all numVectors
+        std::vector<faiss::idx_t> assignments(numVectors);
+        std::vector<float> distances(numVectors);
+        index->search(numVectors, vectors, 1, distances.data(), assignments.data());
+
+        delete index;
+
+        // ... same Java object creation as existing kmeansWithDistances ...
+    }
+}
+```
+
+The only difference from the existing `kmeansWithDistances` is line 1: `reinterpret_cast<float*>(mmapAddress)`
+instead of `reinterpret_cast<std::vector<float>*>(vectorsAddress)->data()`.
+
+#### Step 3: Update `SegmentReorderService.computePermutationFromVecFile`
+
+Pass the `IndexInput` and offset to the strategy instead of materializing `FloatVectorValues`:
+
+```java
+private int[] computePermutationFromVecFile(Directory directory, String segmentName) throws IOException {
+    // ... existing code to build readState and open Lucene99FlatVectorsReader ...
+
+    try (Lucene99FlatVectorsReader reader = new Lucene99FlatVectorsReader(readState, DefaultFlatVectorScorer.INSTANCE)) {
+        FloatVectorValues vectorValues = reader.getFloatVectorValues(fieldInfo.name);
+        if (vectorValues == null) {
+            throw new IOException("No float vector values for field " + fieldInfo.name);
+        }
+
+        if (strategy instanceof KMeansReorderStrategy kmeansStrategy) {
+            // Try mmap path — pass the raw .vec IndexInput + offset to avoid heap copy
+            IndexInput vecInput = directory.openInput(vecDataFileName, IOContext.DEFAULT);
+            // vectorDataOffset = codec header size. Lucene99FlatVectorsReader stores this
+            // in FieldEntry but it's package-private. Compute it:
+            //   CodecUtil.headerLength(codecName) = 16 + codecName.length bytes
+            //   For "Lucene99FlatVectorsFormatData": header is ~43 bytes
+            // Alternatively, read it from the .vemf metadata (vectorDataOffset field).
+            long vectorDataOffset = readVectorDataOffsetFromMeta(directory, vecMetaFileName);
+            long vectorDataLength = (long) vectorValues.size() * vectorValues.dimension() * Float.BYTES;
+
+            try {
+                return kmeansStrategy.computePermutationMMap(
+                    vecInput, vectorDataOffset, vectorDataLength,
+                    vectorValues.size(), vectorValues.dimension(),
+                    numThreads, fieldInfo.getVectorSimilarityFunction()
+                );
+            } catch (Exception e) {
+                log.warn("mmap KMeans failed, falling back to standard path", e);
+            } finally {
+                vecInput.close();
+            }
+        }
+
+        // Default path (BP, or KMeans fallback)
+        return strategy.computePermutation(vectorValues, numThreads, fieldInfo.getVectorSimilarityFunction());
+    }
+}
+```
+
+#### Step 4: Handle multi-segment mmap (edge case)
+
+Lucene's `MMapDirectory` may split large files into multiple `MemorySegment` chunks (default
+chunk size is `Integer.MAX_VALUE` ~2GB). For a 2M × 1024 × 4 = 8GB `.vec` file, there will
+be ~4 chunks.
+
+`extractAddressAndSize()` returns `[addr0, size0, addr1, size1, ...]` for multi-segment files.
+FAISS needs a single contiguous pointer.
+
+Options:
+- **If single segment** (vectorDataLength < chunk size): pass `addressAndSize[0]` directly. ✅
+- **If multi-segment**: fall back to `OffHeapVectorTransfer` (Option 2) or the existing heap
+  path. This only happens for segments > ~2GB of vector data (~500k vectors at 1024-dim).
+
+For the common case (segments up to ~500k vectors), single-segment mmap works. For larger
+segments, the fallback is acceptable since FAISS subsamples to k*256 vectors anyway — the
+full buffer is only read twice.
+
+**Better option for multi-segment:** Use `IndexInput.slice()` to get a slice over the vector
+data region, then check if the slice is backed by a single `MemorySegment`. Lucene's slicing
+may consolidate the view. If not, fall back.
+
+#### Step 5: Cap k for small segments
+
+Regardless of mmap vs heap, add k-capping to `KMeansReorderStrategy`:
+
+```java
+private int capK(int numVectors) {
+    int effectiveK = Math.min(k, numVectors);
+    int minPointsPerCentroid = 39;  // FAISS default
+    if (numVectors < effectiveK * minPointsPerCentroid) {
+        effectiveK = Math.max(1, numVectors / minPointsPerCentroid);
+    }
+    return effectiveK;
+}
+```
+
+### Files to Change
+
+| File | Change |
+|------|--------|
+| `KMeansReorderStrategy.java` | Add `computePermutationMMap()`, add `capK()`, add `identityPermutation()` |
+| `FaissKMeansService.java` | Add `native kmeansWithDistancesMMap(long, int, int, int, int, int)` |
+| `FaissKMeansService.cpp` | Add JNI implementation — same as `kmeansWithDistances` but cast `jlong` directly to `float*` instead of `std::vector<float>*` |
+| `SegmentReorderService.java` | In `computePermutationFromVecFile()`, detect `KMeansReorderStrategy`, extract mmap address via `MemorySegmentAddressExtractorJDK21`, call `computePermutationMMap()` |
+
+### Test Plan
+
+#### Unit Tests
+
+**`KMeansReorderStrategyTests`:**
+- Test `capK()`: verify k is reduced when `n < k * 39` (e.g., 1000 vectors with k=100 → k=25)
+- Test `capK()`: verify k unchanged when `n >= k * 39`
+- Test identity permutation returned when `n < 2 * effectiveK`
+
+**`FaissKMeansServiceMMapTests`:**
+- Allocate a native buffer via `JNICommons.storeVectorData()`, call `kmeansWithDistancesMMap()`
+  with the raw data pointer (not the `std::vector*` wrapper), verify valid assignments returned
+- This validates the JNI method works with a raw `float*` pointer
+- Compare results with existing `kmeansWithDistances()` on same data — assignments should match
+
+#### Integration Tests
+
+**`SegmentReorderServiceMMapTest`:**
+- Create a k-NN index with kmeans reorder strategy, index >10k vectors, force merge
+- Verify reorder completes without `CircuitBreakingException`
+- Verify search results identical before and after reorder
+- Monitor heap usage: confirm Java heap stays under 500MB during reorder (vs ~8GB before)
+
+**Memory pressure test:**
+- Set JVM heap to 4GB (`-Xmx4g`) — would OOM with the old approach for any segment > ~500k vectors
+- Index 1M vectors, force merge with kmeans reorder
+- Verify reorder succeeds (proves mmap path is used, not heap materialization)
+
+**Multi-segment mmap fallback test:**
+- Index enough vectors that `.vec` file exceeds 2GB (>500k vectors at 1024-dim)
+- Verify fallback to heap/OffHeapVectorTransfer path is triggered (check logs for warning)
+- Verify reorder still succeeds
+
+#### Benchmarks
+
+- Compare reorder wall-clock time: mmap vs current heap approach on 2M × 1024-dim segment
+- Expected: similar or slightly slower due to page faults during subsample (random access
+  into 8GB file), but the final assignment pass is sequential and readahead-friendly
+- The 25 training iterations are identical (both operate on FAISS's internal 1.5GB subsample)

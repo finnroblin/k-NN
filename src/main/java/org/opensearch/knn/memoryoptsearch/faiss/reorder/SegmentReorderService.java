@@ -6,6 +6,7 @@
 package org.opensearch.knn.memoryoptsearch.faiss.reorder;
 
 import lombok.extern.log4j.Log4j2;
+import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.hnsw.DefaultFlatVectorScorer;
 import org.apache.lucene.codecs.lucene99.Lucene99FlatVectorsReader;
 import org.apache.lucene.index.DocValuesSkipIndexType;
@@ -24,6 +25,7 @@ import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.opensearch.knn.index.engine.KNNEngine;
 import org.opensearch.knn.memoryoptsearch.faiss.FaissIndex;
+import org.opensearch.knn.memoryoptsearch.faiss.reorder.kmeansreorder.KMeansReorderStrategy;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -105,9 +107,6 @@ public class SegmentReorderService {
         // Build a SegmentReadState to open the Lucene99FlatVectorsReader
         final FieldInfo readFieldInfo = buildFieldInfoForRead();
         final FieldInfos fieldInfos = new FieldInfos(new FieldInfo[] { readFieldInfo });
-
-        // We need the segment suffix that Lucene99FlatVectorsFormat uses.
-        // Extract it from the .vec filename: format is {segmentName}_{suffix}_{fieldName}.vec
         final String segmentSuffix = extractSegmentSuffix(vecDataFileName, segmentName);
 
         final SegmentReadState readState = new SegmentReadState(
@@ -119,10 +118,66 @@ public class SegmentReorderService {
             if (vectorValues == null) {
                 throw new IOException("No float vector values for field " + fieldInfo.name);
             }
+
+            // Try mmap passthrough for KMeans — avoids ~8GB heap + ~8GB native allocation
+            if (strategy instanceof KMeansReorderStrategy kmeansStrategy) {
+                int[] mmapResult = tryMMapKMeans(kmeansStrategy, directory, vecDataFileName, vectorValues);
+                if (mmapResult != null) {
+                    return mmapResult;
+                }
+                log.info("mmap KMeans unavailable, falling back to heap materialization");
+            }
+
             log.info("Computing reorder permutation for {} vectors, field [{}]", vectorValues.size(), fieldInfo.name);
             int[] perm = strategy.computePermutation(vectorValues, numThreads, fieldInfo.getVectorSimilarityFunction());
             return perm;
         }
+    }
+
+    /**
+     * Try to run KMeans via mmap passthrough. Returns null if mmap extraction fails.
+     */
+    private int[] tryMMapKMeans(
+        KMeansReorderStrategy kmeansStrategy, Directory directory,
+        String vecDataFileName, FloatVectorValues vectorValues
+    ) {
+        try (IndexInput rawVecInput = directory.openInput(vecDataFileName, IOContext.DEFAULT)) {
+            // Skip the codec header to find where vector data starts
+            CodecUtil.checkIndexHeader(
+                rawVecInput,
+                "Lucene99FlatVectorsFormatData",
+                0, 1,
+                state.segmentInfo.getId(),
+                state.segmentSuffix
+            );
+            long headerSize = rawVecInput.getFilePointer();
+
+            // Lucene99FlatVectorsWriter aligns to Float.BYTES after the header
+            long vectorDataOffset = alignUp(headerSize, Float.BYTES);
+
+            long vectorDataLength = (long) vectorValues.size() * vectorValues.dimension() * Float.BYTES;
+
+            log.info("mmap KMeans: file={}, fileLen={}, headerSize={}, vectorDataOffset={}, vectorDataLen={}, n={}, dim={}",
+                vecDataFileName, rawVecInput.length(), headerSize, vectorDataOffset, vectorDataLength,
+                vectorValues.size(), vectorValues.dimension());
+
+            // Open a FRESH input for address extraction (no header consumed)
+            try (IndexInput mmapInput = directory.openInput(vecDataFileName, IOContext.DEFAULT)) {
+                return kmeansStrategy.computePermutationMMap(
+                    mmapInput, vectorDataOffset, 0,
+                    vectorValues.size(), vectorValues.dimension(),
+                    fieldInfo.getVectorSimilarityFunction()
+                );
+            }
+        } catch (Exception e) {
+            log.warn("mmap KMeans attempt failed", e);
+            return null;
+        }
+    }
+
+    private static long alignUp(long position, int alignment) {
+        long remainder = position % alignment;
+        return remainder == 0 ? position : position + alignment - remainder;
     }
 
     private void rewriteVecFile(

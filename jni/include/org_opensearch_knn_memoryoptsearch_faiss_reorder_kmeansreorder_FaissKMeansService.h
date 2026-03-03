@@ -19,6 +19,14 @@ extern "C" {
 JNIEXPORT jobject JNICALL Java_org_opensearch_knn_memoryoptsearch_faiss_reorder_kmeansreorder_FaissKMeansService_kmeansWithDistances
   (JNIEnv *, jclass, jlong, jint, jint, jint, jint, jint);
 
+/*
+ * Class:     org_opensearch_knn_memoryoptsearch_faiss_reorder_kmeansreorder_FaissKMeansService
+ * Method:    kmeansWithDistancesMMap
+ * Signature: (JIIIII)Lorg/opensearch/knn/memoryoptsearch/faiss/reorder/kmeansreorder/KMeansResult;
+ */
+JNIEXPORT jobject JNICALL Java_org_opensearch_knn_memoryoptsearch_faiss_reorder_kmeansreorder_FaissKMeansService_kmeansWithDistancesMMap
+  (JNIEnv *, jclass, jlong, jint, jint, jint, jint, jint);
+
 #ifdef __cplusplus
 }
 #endif

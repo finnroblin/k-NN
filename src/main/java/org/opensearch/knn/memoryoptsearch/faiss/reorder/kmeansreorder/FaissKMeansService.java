@@ -24,7 +24,7 @@ public class FaissKMeansService {
     /**
      * Run k-means clustering and return both assignments and distances to centroids.
      *
-     * @param vectorsAddress pointer to native memory where vectors are stored
+     * @param vectorsAddress pointer to native memory where vectors are stored (std::vector&lt;float&gt;*)
      * @param numVectors number of vectors
      * @param dimension dimension of each vector
      * @param numClusters number of clusters (k)
@@ -34,6 +34,23 @@ public class FaissKMeansService {
      */
     public static native KMeansResult kmeansWithDistances(
         long vectorsAddress, int numVectors, int dimension,
+        int numClusters, int numIterations, int metricType
+    );
+
+    /**
+     * Run k-means on mmap'd vector data. The address points directly to contiguous float data
+     * (not a std::vector wrapper). FAISS reads from this pointer; it is NOT freed by this method.
+     *
+     * @param mmapAddress raw pointer to contiguous float vector data
+     * @param numVectors number of vectors
+     * @param dimension dimension of each vector
+     * @param numClusters number of clusters (k)
+     * @param numIterations number of k-means iterations
+     * @param metricType METRIC_L2 or METRIC_INNER_PRODUCT
+     * @return KMeansResult containing assignments and distances
+     */
+    public static native KMeansResult kmeansWithDistancesMMap(
+        long mmapAddress, int numVectors, int dimension,
         int numClusters, int numIterations, int metricType
     );
 

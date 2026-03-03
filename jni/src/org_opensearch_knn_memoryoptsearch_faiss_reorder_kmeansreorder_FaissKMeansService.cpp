@@ -84,3 +84,59 @@ JNIEXPORT jobject JNICALL Java_org_opensearch_knn_memoryoptsearch_faiss_reorder_
         return nullptr;
     }
 }
+
+JNIEXPORT jobject JNICALL Java_org_opensearch_knn_memoryoptsearch_faiss_reorder_kmeansreorder_FaissKMeansService_kmeansWithDistancesMMap(
+    JNIEnv* env, jclass cls,
+    jlong mmapAddress, jint numVectors, jint dimension, jint numClusters, jint numIterations, jint metricType)
+{
+    try {
+        // mmapAddress points directly to float data (mmap'd), not a std::vector wrapper
+        float* vectors = reinterpret_cast<float*>(mmapAddress);
+
+        faiss::ClusteringParameters cp;
+        cp.niter = numIterations;
+        cp.verbose = false;
+
+        faiss::Clustering clustering(dimension, numClusters, cp);
+
+        faiss::Index* index;
+        if (metricType == 1) {
+            index = new faiss::IndexFlatIP(dimension);
+        } else {
+            index = new faiss::IndexFlatL2(dimension);
+        }
+
+        clustering.train(numVectors, vectors, *index);
+
+        std::vector<faiss::idx_t> assignments(numVectors);
+        std::vector<float> distances(numVectors);
+        index->search(numVectors, vectors, 1, distances.data(), assignments.data());
+
+        delete index;
+
+        jintArray assignmentsArray = env->NewIntArray(numVectors);
+        jfloatArray distancesArray = env->NewFloatArray(numVectors);
+
+        std::vector<jint> intAssignments(assignments.begin(), assignments.end());
+        env->SetIntArrayRegion(assignmentsArray, 0, numVectors, intAssignments.data());
+        env->SetFloatArrayRegion(distancesArray, 0, numVectors, distances.data());
+
+        jclass resultClass = env->FindClass("org/opensearch/knn/memoryoptsearch/faiss/reorder/kmeansreorder/KMeansResult");
+        if (resultClass == nullptr) {
+            throw std::runtime_error("Could not find KMeansResult class");
+        }
+
+        jmethodID constructor = env->GetMethodID(resultClass, "<init>", "([I[F)V");
+        if (constructor == nullptr) {
+            throw std::runtime_error("Could not find KMeansResult constructor");
+        }
+
+        return env->NewObject(resultClass, constructor, assignmentsArray, distancesArray);
+    } catch (const std::exception& e) {
+        jniUtilKMeans.ThrowJavaException(env, "java/lang/RuntimeException", e.what());
+        return nullptr;
+    } catch (...) {
+        jniUtilKMeans.ThrowJavaException(env, "java/lang/RuntimeException", "Unknown error in mmap k-means");
+        return nullptr;
+    }
+}
