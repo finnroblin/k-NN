@@ -4,7 +4,7 @@ set -euo pipefail
 K="${1:?Usage: swap_reordered_data.sh <num_centroids>}"
 REORDERED_BASE="/home/ec2-user/reordering-sweep-data"
 SRC="${REORDERED_BASE}/kmeans_k${K}/data"
-DEST="/home/ec2-user/before-reordering/after-reordering/data/nodes"
+DEST="/home/ec2-user/before-reordering/data/after-reordering/data/nodes"
 DISTRO="/home/ec2-user/k-NN-finn/build/testclusters/integTest-0/distro/3.6.0-ARCHIVE"
 
 if [ ! -d "$SRC" ]; then
