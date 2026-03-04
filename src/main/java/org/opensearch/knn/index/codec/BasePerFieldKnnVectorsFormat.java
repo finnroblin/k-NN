@@ -25,6 +25,7 @@ import org.opensearch.knn.index.mapper.KNNVectorFieldType;
 import org.opensearch.knn.memoryoptsearch.faiss.reorder.VectorReorderStrategy;
 import org.opensearch.knn.memoryoptsearch.faiss.reorder.bpreorder.BipartiteReorderStrategy;
 import org.opensearch.knn.memoryoptsearch.faiss.reorder.kmeansreorder.KMeansReorderStrategy;
+import org.opensearch.knn.memoryoptsearch.faiss.reorder.kmeansreorder.MergeAwareKMeansReorderStrategy;
 
 import java.util.Map;
 import java.util.Optional;
@@ -176,6 +177,9 @@ public abstract class BasePerFieldKnnVectorsFormat extends PerFieldKnnVectorsFor
             case "kmeans":
                 final int numClusters = indexSettings.getValue(KNNSettings.INDEX_KNN_ADVANCED_REORDER_KMEANS_NUM_CLUSTERS_SETTING);
                 return new KMeansReorderStrategy(numClusters, 25);
+            case "kmeans_merge_aware":
+                final int numClustersMerge = indexSettings.getValue(KNNSettings.INDEX_KNN_ADVANCED_REORDER_KMEANS_NUM_CLUSTERS_SETTING);
+                return new MergeAwareKMeansReorderStrategy(numClustersMerge, 25);
             case "none":
                 return null;
             default:

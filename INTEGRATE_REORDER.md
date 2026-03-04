@@ -2034,3 +2034,183 @@ private int capK(int numVectors) {
 - Expected: similar or slightly slower due to page faults during subsample (random access
   into 8GB file), but the final assignment pass is sequential and readahead-friendly
 - The 25 training iterations are identical (both operate on FAISS's internal 1.5GB subsample)
+
+---
+
+## Fix: Pre-fault mmap Pages Before FAISS KMeans (2026-03-03)
+
+### Problem
+
+Initial mmap implementation was ~15× slower than the native-alloc path on a 123k × 768-dim
+segment (168s vs ~10s). KMeans itself was not the bottleneck — the random page faults during
+FAISS's subsampling pass were.
+
+FAISS `subsample_training_set()` picks `k * 256` random vectors from the input pointer. With
+mmap, each random access into a cold 362MB file triggers a kernel page fault + disk read. For
+k=1500, that's up to 384k random 4KB page reads — catastrophically slow compared to sequential
+I/O.
+
+The old native-alloc path (`storeVectors()`) did one sequential copy into RAM first, so FAISS's
+random subsample hit warm memory. The mmap path skipped that copy but paid for it in page faults.
+
+### Fix
+
+Added a pre-fault loop in the JNI `kmeansWithDistancesMMap()` before calling
+`clustering.train()`:
+
+```cpp
+// Pre-fault: sequential touch at page stride to warm the page cache.
+// Without this, FAISS's random-access subsampling triggers ~100k+ random page faults.
+{
+    volatile char sum = 0;
+    const char* bytes = reinterpret_cast<const char*>(vectors);
+    long nbytes = (long)numVectors * dimension * sizeof(float);
+    for (long i = 0; i < nbytes; i += 4096) {
+        sum += bytes[i];
+    }
+}
+```
+
+This sequentially touches one byte per 4KB page across the entire vector region. The OS
+services these as efficient sequential reads with readahead. After the loop, all pages are
+in the page cache and FAISS's random subsample hits warm memory — identical to the native-alloc
+path.
+
+### Cost
+
+For a 362MB file: ~88k sequential page touches ≈ 100–200ms on SSD. Negligible compared to
+the 168s of random page faults it eliminates.
+
+### Why not `madvise(MADV_WILLNEED)`?
+
+`madvise` is Linux-only and asynchronous (the kernel may not finish paging before FAISS starts
+reading). The explicit touch loop is portable (works on macOS/Linux) and synchronous — when it
+returns, all pages are guaranteed warm.
+
+### Updated Memory + I/O Profile (123k × 768-dim, k=1500)
+
+| Phase | Native-alloc (old) | mmap (before fix) | mmap (after fix) |
+|-------|-------------------|-------------------|------------------|
+| Java heap | ~360MB | 0 | 0 |
+| Native alloc | ~360MB | 0 | 0 |
+| Pre-fault I/O | N/A | N/A | ~200ms sequential |
+| FAISS subsample | RAM (fast) | random page faults (168s) | RAM (fast) |
+| FAISS training | ~1.1GB internal | ~1.1GB internal | ~1.1GB internal |
+| Final assignment | RAM | sequential mmap (fast) | sequential mmap (fast) |
+| **Total wall time** | **~10s** | **~168s** | **~10s** |
+
+---
+
+## Algorithms for Merging K-Means Centroids Efficiently (Research Notes, 2026-03-03)
+
+Context: evaluating an architecture where clusters are computed during flush (background thread)
+and a lightweight combine/merge of centroids happens during segment merge, avoiding full
+re-clustering of all vectors.
+
+### 1. Weighted Centroid Merging via Sufficient Statistics
+
+The foundational technique. Each cluster is represented as a tuple `(sum, count)` — the vector
+sum of all assigned points and the number of points. Two clusters merge in O(d):
+
+```
+merged_centroid = (sum_A + sum_B) / (count_A + count_B)
+merged_count = count_A + count_B
+```
+
+To combine centroids from two flush segments:
+1. Each flush writes k centroids with `(centroid, count, sum_of_squares)` — the sufficient statistics
+2. At merge time, pool all centroids from source segments (e.g., 2 segments × k = 2k weighted centroids)
+3. Run weighted k-means on the 2k centroids (treating each as a weighted point), reducing back to k
+4. Reassign all vectors to the new k centroids via a single streaming pass over the merged `.vec`
+
+The reassignment pass is the expensive part but is a single sequential scan — no random access.
+The clustering step itself is trivial since you're clustering 2k points, not millions.
+
+### 2. BIRCH Clustering Features (CF-tree)
+
+BIRCH represents each cluster as a "Clustering Feature" triple: `CF = (N, LS, SS)` where
+N = count, LS = linear sum (vector), SS = sum of squares (scalar or per-dim). These are fully
+additive — merging two CFs is element-wise addition. The centroid is `LS/N`, and the
+radius/diameter can be computed from SS.
+
+Same idea as #1 but formalized. CFs are closed under addition, so merging is O(d) per cluster
+pair. BIRCH uses a tree structure to decide which CFs to merge (closest pair by inter-cluster
+distance), but for our case we'd pool and re-cluster.
+
+Reference: Zhang et al., "BIRCH: A New Data Clustering Algorithm and Its Applications"
+https://link.springer.com/article/10.1023/A:1009783824328
+
+### 3. Hierarchical Merging of K-Means Solutions (Baudry et al.)
+
+Run k-means independently on partitions, then merge clusters whose assigned point sets overlap
+significantly. The merge criterion is based on Bhattacharyya distance or centroid distance
+between clusters from different partitions.
+
+For our case: each flush segment produces k clusters. At merge time, pool k₁ + k₂ centroids.
+Compute pairwise distances between all centroids, then greedily merge the closest pairs until
+back to k. The merged centroid uses the weighted average formula from #1.
+
+Reference: "Clustering Large Datasets by Merging K-Means Solutions"
+https://www.researchgate.net/publication/332081523_Clustering_Large_Datasets_by_Merging_K-Means_Solutions
+
+### 4. Coreset-based Merging
+
+A coreset is a small weighted point set that approximates the full dataset for clustering.
+The centroids + counts from each flush segment are essentially a coreset. The merge operation:
+
+1. Union the coresets from source segments
+2. Run weighted k-means on the union (small — just the centroids, not the vectors)
+3. Use the result as the new coreset for the merged segment
+
+Theoretical guarantee: if each coreset is an ε-approximation, the merged result is a
+(1+ε)-approximation. The practical version is just weighted k-means on the pooled centroids.
+
+### 5. k*-means Split/Merge (MDL-based)
+
+The k*-means algorithm uses minimum description length (MDL) to decide when to split or merge
+clusters. Each cluster maintains two sub-centroids. The merge criterion compares the cost of
+keeping two clusters separate vs. combining them. Relevant if the merge step should also adapt
+k — e.g., if two flush segments had similar cluster structure, fewer total clusters may suffice.
+
+Reference: Mahon & Lapata, "k*-means: A Parameter-free Clustering Algorithm"
+https://arxiv.org/html/2505.11904v1
+
+### Recommended Approach for Flush-then-Merge Architecture
+
+**During flush:** Run k-means, store per-cluster sufficient statistics alongside the segment:
+
+```java
+class ClusterSummary {
+    float[] centroid;    // LS / N
+    float[] linearSum;   // LS = sum of all vectors in cluster
+    int count;           // N
+    float sumOfSquares;  // SS = sum of ||v - centroid||² for intra-cluster variance
+}
+```
+
+**During merge:**
+1. Pool all `ClusterSummary` objects from source segments (cheap — just reading metadata)
+2. Run weighted k-means on the pooled centroids (k₁ + k₂ points, not millions of vectors) —
+   the "lightweight combine" step, takes milliseconds
+3. Single streaming pass over the merged `.vec` to assign each vector to its nearest new
+   centroid and compute the permutation
+
+Step 2 is where the centroid merging happens — k-means on ~2k weighted points instead of
+millions of vectors. The weighted k-means update rule:
+
+```
+new_centroid_j = Σ(weight_i * centroid_i) / Σ(weight_i)  for all centroids_i assigned to cluster j
+```
+
+where `weight_i = count_i` from the source cluster summary.
+
+Step 3 (the assignment pass) is the bottleneck but is a single sequential scan — much cheaper
+than running full k-means on all vectors. Since we're reading from mmap'd `.vec` files, it's
+readahead-friendly.
+
+**Tradeoff vs. full k-means at merge time:** slightly worse cluster quality (centroids are
+approximate since they were computed on partitions, not the full dataset), but dramatically
+faster merge since we avoid the iterative k-means training loop on millions of vectors.
+
+**Storage overhead:** ~`k * (d * 4 + d * 4 + 4 + 4)` bytes per segment for the cluster
+summaries. With k=256 and d=1024: ~2MB per segment. Negligible compared to the `.vec` file.

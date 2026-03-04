@@ -6,6 +6,7 @@
 package org.opensearch.knn.memoryoptsearch.faiss.reorder.bpreorder;
 
 import org.apache.lucene.index.FloatVectorValues;
+import org.apache.lucene.index.VectorSimilarityFunction;
 import org.opensearch.test.OpenSearchTestCase;
 
 import java.io.IOException;
@@ -38,28 +39,28 @@ public class BipartiteReorderStrategyTests extends OpenSearchTestCase {
     public void testProducesValidPermutation() throws IOException {
         float[][] vectors = generateClusteredVectors(500, 16, 2);
         BipartiteReorderStrategy strategy = new BipartiteReorderStrategy();
-        int[] permutation = strategy.computePermutation(toFloatVectorValues(vectors), 2);
+        int[] permutation = strategy.computePermutation(toFloatVectorValues(vectors), 2, VectorSimilarityFunction.EUCLIDEAN);
         assertValidPermutation(permutation, 500);
     }
 
     public void testSingleThread() throws IOException {
         float[][] vectors = generateClusteredVectors(200, 8, 2);
         BipartiteReorderStrategy strategy = new BipartiteReorderStrategy();
-        int[] permutation = strategy.computePermutation(toFloatVectorValues(vectors), 1);
+        int[] permutation = strategy.computePermutation(toFloatVectorValues(vectors), 1, VectorSimilarityFunction.EUCLIDEAN);
         assertValidPermutation(permutation, 200);
     }
 
     public void testMultiThread() throws IOException {
         float[][] vectors = generateClusteredVectors(200, 8, 2);
         BipartiteReorderStrategy strategy = new BipartiteReorderStrategy();
-        int[] permutation = strategy.computePermutation(toFloatVectorValues(vectors), 4);
+        int[] permutation = strategy.computePermutation(toFloatVectorValues(vectors), 4, VectorSimilarityFunction.EUCLIDEAN);
         assertValidPermutation(permutation, 200);
     }
 
     public void testMinimumInput() throws IOException {
         float[][] vectors = { { 1.0f, 0.0f }, { 0.0f, 1.0f } };
         BipartiteReorderStrategy strategy = new BipartiteReorderStrategy();
-        int[] permutation = strategy.computePermutation(toFloatVectorValues(vectors), 1);
+        int[] permutation = strategy.computePermutation(toFloatVectorValues(vectors), 1, VectorSimilarityFunction.EUCLIDEAN);
         assertValidPermutation(permutation, 2);
     }
 
@@ -76,7 +77,7 @@ public class BipartiteReorderStrategyTests extends OpenSearchTestCase {
         }
 
         BipartiteReorderStrategy strategy = new BipartiteReorderStrategy();
-        int[] permutation = strategy.computePermutation(toFloatVectorValues(vectors), 2);
+        int[] permutation = strategy.computePermutation(toFloatVectorValues(vectors), 2, VectorSimilarityFunction.EUCLIDEAN);
         assertValidPermutation(permutation, vectors.length);
 
         int sameClusterAdjacent = 0;

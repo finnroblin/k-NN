@@ -87,6 +87,14 @@ public class NativeEngines990KnnVectorsReader extends KnnVectorsReader {
     }
 
     /**
+     * Returns the segment read state for this reader. Used during merge to access
+     * source segment directory and segment info for reading .kcs sidecar files.
+     */
+    public SegmentReadState getSegmentReadState() {
+        return segmentReadState;
+    }
+
+    /**
      * Checks consistency of this reader.
      *
      * <p>Note that this may be costly in terms of I/O, e.g. may involve computing a checksum value

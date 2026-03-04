@@ -67,6 +67,72 @@ public class SegmentReorderService {
      * Reads vectors from the .vec file via Lucene99FlatVectorsReader, computes the permutation,
      * then rewrites all three files with the reordered layout.
      */
+    /**
+     * Reorder using pre-loaded cluster summaries from source segments (merge-aware path).
+     * Opens the finalized .vec file, computes permutation via centroid merging, writes .kcs,
+     * then rewrites .vec, .vemf, and .faiss.
+     */
+    public void reorderSegmentFilesWithSummaries(
+        java.util.List<org.opensearch.knn.memoryoptsearch.faiss.reorder.kmeansreorder.ClusterSummary> sourceSummaries,
+        MergeAwareReorderStrategy mergeAware
+    ) throws IOException {
+        final Directory directory = state.directory;
+        final String segmentName = state.segmentInfo.name;
+
+        // Open finalized .vec to get FloatVectorValues
+        final String vecDataFileName = findFileWithSuffix(directory, segmentName, ".vec");
+        final String vecMetaFileName = findFileWithSuffix(directory, segmentName, ".vemf");
+        if (vecDataFileName == null || vecMetaFileName == null) {
+            throw new IOException("Cannot find .vec/.vemf files for segment " + segmentName);
+        }
+
+        final FieldInfo readFieldInfo = buildFieldInfoForRead();
+        final FieldInfos fieldInfos = new FieldInfos(new FieldInfo[] { readFieldInfo });
+        final String segmentSuffix = state.segmentSuffix;
+
+        final SegmentReadState readState = new SegmentReadState(
+            directory, state.segmentInfo, fieldInfos, IOContext.DEFAULT, segmentSuffix
+        );
+
+        final int[] permutation;
+        try (Lucene99FlatVectorsReader reader = new Lucene99FlatVectorsReader(readState, DefaultFlatVectorScorer.INSTANCE)) {
+            final FloatVectorValues vectorValues = reader.getFloatVectorValues(fieldInfo.name);
+            if (vectorValues == null) {
+                throw new IOException("No float vector values for field " + fieldInfo.name);
+            }
+
+            var result = mergeAware.computePermutationFromMergedSummaries(
+                sourceSummaries, vectorValues, numThreads, fieldInfo.getVectorSimilarityFunction()
+            );
+            permutation = result.permutation();
+            log.info("Merge-aware permutation size={}, vectorValues.size()={}", permutation.length, vectorValues.size());
+
+            // Write .kcs for the merged segment
+            org.opensearch.knn.memoryoptsearch.faiss.reorder.kmeansreorder.ClusterSummaryWriter.writeAndGetFileName(
+                state, fieldInfo, result.summary()
+            );
+        }
+
+        final ReorderOrdMap reorderOrdMap = new ReorderOrdMap(permutation);
+
+        final Directory writeDir = new FilterDirectory(directory) {
+            @Override
+            public IndexOutput createOutput(String name, IOContext context) throws IOException {
+                return in.createOutput(name, state.context);
+            }
+        };
+
+        rewriteVecFile(directory, writeDir, vecDataFileName, vecMetaFileName, reorderOrdMap);
+
+        final KNNEngine knnEngine = KNNEngine.FAISS;
+        final String engineFileName = buildEngineFileName(
+            segmentName, knnEngine.getVersion(), fieldInfo.name, knnEngine.getExtension()
+        );
+        rewriteFaissFile(directory, writeDir, engineFileName, reorderOrdMap);
+
+        log.info("Merge-aware reorder complete for segment {}, field [{}]", segmentName, fieldInfo.name);
+    }
+
     public void reorderSegmentFiles() throws IOException {
         final Directory directory = state.directory;
         final String segmentName = state.segmentInfo.name;

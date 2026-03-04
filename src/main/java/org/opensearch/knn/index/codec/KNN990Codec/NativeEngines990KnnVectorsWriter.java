@@ -16,10 +16,12 @@ import org.apache.lucene.codecs.KnnFieldVectorsWriter;
 import org.apache.lucene.codecs.KnnVectorsWriter;
 import org.apache.lucene.codecs.hnsw.FlatVectorsWriter;
 import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.FloatVectorValues;
 import org.apache.lucene.index.MergeState;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.Sorter;
 import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.RamUsageEstimator;
 import org.opensearch.common.StopWatch;
@@ -30,6 +32,11 @@ import org.opensearch.knn.index.quantizationservice.QuantizationService;
 import org.opensearch.knn.index.vectorvalues.KNNVectorValues;
 import org.opensearch.knn.memoryoptsearch.faiss.reorder.SegmentReorderService;
 import org.opensearch.knn.memoryoptsearch.faiss.reorder.VectorReorderStrategy;
+import org.opensearch.knn.memoryoptsearch.faiss.reorder.MergeAwareReorderStrategy;
+import org.opensearch.knn.memoryoptsearch.faiss.reorder.kmeansreorder.ClusterResult;
+import org.opensearch.knn.memoryoptsearch.faiss.reorder.kmeansreorder.ClusterSummary;
+import org.opensearch.knn.memoryoptsearch.faiss.reorder.kmeansreorder.ClusterSummaryReader;
+import org.opensearch.knn.memoryoptsearch.faiss.reorder.kmeansreorder.ClusterSummaryWriter;
 import org.opensearch.knn.plugin.stats.KNNGraphValue;
 import org.opensearch.knn.quantization.models.quantizationParams.QuantizationParams;
 import org.opensearch.knn.quantization.models.quantizationState.QuantizationState;
@@ -62,6 +69,13 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
     // Fields that need reordering after finish() writes footers.
     // Populated during mergeOneField() for fields above the reorder threshold.
     private final List<FieldInfo> fieldsToReorder = new ArrayList<>();
+
+    // Stored during mergeOneField() so finish() can read source .kcs files.
+    private MergeState mergeState;
+
+    // Source cluster summaries loaded during mergeOneField(), keyed by field name.
+    // Used in finish() for merge-aware reorder.
+    private final java.util.Map<String, List<ClusterSummary>> sourceClusterSummaries = new java.util.HashMap<>();
 
     public NativeEngines990KnnVectorsWriter(
         SegmentWriteState segmentWriteState,
@@ -136,11 +150,17 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
             long time_in_millis = stopWatch.stop().totalTime().millis();
             KNNGraphValue.REFRESH_TOTAL_TIME_IN_MILLIS.incrementBy(time_in_millis);
             log.debug("Flush took {} ms for vector field [{}]", time_in_millis, fieldInfo.getName());
+
+            // For merge-aware strategy, cluster at flush and write .kcs for future merges
+            if (reorderStrategy instanceof MergeAwareReorderStrategy mergeAware && vectorDataType == VectorDataType.FLOAT) {
+                writeFlushClusterSummary(mergeAware, field, fieldInfo, totalLiveDocs);
+            }
         }
     }
 
     @Override
     public void mergeOneField(final FieldInfo fieldInfo, final MergeState mergeState) throws IOException {
+        this.mergeState = mergeState;
         flatVectorsWriter.mergeOneField(fieldInfo, mergeState);
 
         final VectorDataType vectorDataType = extractVectorDataType(fieldInfo);
@@ -182,6 +202,13 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
         // flatVectorsWriter.finish() writes the .vec/.vemf footers, so we can read them.
         if (reorderStrategy != null && totalLiveDocs >= SegmentReorderService.MIN_VECTORS_FOR_REORDER) {
             fieldsToReorder.add(fieldInfo);
+
+            // For merge-aware strategy, load source .kcs files now while we have MergeState.
+            // All segments in a shard share the same Directory.
+            if (reorderStrategy instanceof MergeAwareReorderStrategy) {
+                List<ClusterSummary> summaries = loadSourceClusterSummaries(fieldInfo);
+                sourceClusterSummaries.put(fieldInfo.name, summaries);
+            }
         }
     }
 
@@ -204,16 +231,85 @@ public class NativeEngines990KnnVectorsWriter extends KnnVectorsWriter {
         for (FieldInfo fieldInfo : fieldsToReorder) {
             try {
                 StopWatch reorderWatch = new StopWatch().start();
-                SegmentReorderService reorderService = new SegmentReorderService(
-                    segmentWriteState, fieldInfo, reorderStrategy
-                );
-                reorderService.reorderSegmentFiles();
+
+                if (reorderStrategy instanceof MergeAwareReorderStrategy mergeAware && mergeState != null) {
+                    // Merge-aware path: load source .kcs, merge centroids, assign-only
+                    reorderWithMergedSummaries(mergeAware, fieldInfo);
+                } else {
+                    // Standard path: full recluster
+                    SegmentReorderService reorderService = new SegmentReorderService(
+                        segmentWriteState, fieldInfo, reorderStrategy
+                    );
+                    reorderService.reorderSegmentFiles();
+                }
+
                 long reorderMs = reorderWatch.stop().totalTime().millis();
                 log.info("Reorder took {} ms for field [{}]", reorderMs, fieldInfo.getName());
             } catch (Exception e) {
                 log.error("Failed to reorder field [{}], continuing without reorder", fieldInfo.getName(), e);
             }
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void writeFlushClusterSummary(
+        MergeAwareReorderStrategy mergeAware,
+        NativeEngineFieldVectorsWriter<?> field,
+        FieldInfo fieldInfo,
+        int totalLiveDocs
+    ) {
+        try {
+            // Materialize in-memory vectors into float[][]
+            var vectors = (java.util.Map<Integer, float[]>) field.getVectors();
+            float[][] floatVecs = new float[totalLiveDocs][];
+            int idx = 0;
+            for (float[] v : vectors.values()) {
+                floatVecs[idx++] = v;
+            }
+            FloatVectorValues fvv = FloatVectorValues.fromFloats(java.util.Arrays.asList(floatVecs), fieldInfo.getVectorDimension());
+
+            ClusterResult result = mergeAware.computePermutationWithSummary(fvv, 1, fieldInfo.getVectorSimilarityFunction());
+            ClusterSummaryWriter.writeAndGetFileName(segmentWriteState, fieldInfo, result.summary());
+            log.info("Wrote .kcs at flush for field [{}], k={}, n={}", fieldInfo.name, result.summary().k, totalLiveDocs);
+        } catch (Exception e) {
+            log.error("Failed to write .kcs at flush for field [{}]", fieldInfo.name, e);
+        }
+    }
+
+    private void reorderWithMergedSummaries(MergeAwareReorderStrategy mergeAware, FieldInfo fieldInfo) throws IOException {
+        List<ClusterSummary> sourceSummaries = sourceClusterSummaries.get(fieldInfo.name);
+        if (sourceSummaries == null || sourceSummaries.isEmpty()) {
+            throw new IOException("No source cluster summaries for field " + fieldInfo.name
+                + ". All source segments must have .kcs files when kmeans_merge_aware is enabled.");
+        }
+
+        SegmentReorderService reorderService = new SegmentReorderService(
+            segmentWriteState, fieldInfo, mergeAware
+        );
+        reorderService.reorderSegmentFilesWithSummaries(sourceSummaries, mergeAware);
+    }
+
+    /**
+     * Scan the directory for .kcs files from source segments for the given field.
+     * Source segment names are derived from the .kcs filenames matching the field name,
+     * excluding the target segment.
+     */
+    private List<ClusterSummary> loadSourceClusterSummaries(FieldInfo fieldInfo) throws IOException {
+        Directory dir = segmentWriteState.directory;
+        String targetSegName = segmentWriteState.segmentInfo.name;
+        String suffix = "_" + fieldInfo.name + ".kcs";
+        String compoundSuffix = suffix + "c";
+        List<ClusterSummary> summaries = new ArrayList<>();
+
+        for (String file : dir.listAll()) {
+            if (file.startsWith(targetSegName + "_")) continue;
+            if (file.endsWith(compoundSuffix)) {
+                summaries.add(ClusterSummaryReader.read(dir, file, fieldInfo.name));
+            } else if (file.endsWith(suffix)) {
+                summaries.add(ClusterSummaryReader.read(dir, file, fieldInfo.name));
+            }
+        }
+        return summaries;
     }
 
     @Override

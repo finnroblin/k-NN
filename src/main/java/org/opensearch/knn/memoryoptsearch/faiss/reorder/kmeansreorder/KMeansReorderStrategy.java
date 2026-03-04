@@ -110,10 +110,9 @@ public class KMeansReorderStrategy implements VectorReorderStrategy {
     }
 
     int capK(int numVectors) {
-        int effectiveK = Math.min(k, numVectors);
-        if (numVectors < effectiveK * MIN_POINTS_PER_CENTROID) {
-            effectiveK = Math.max(1, numVectors / MIN_POINTS_PER_CENTROID);
-        }
+        int effectiveK = Math.min((int) Math.sqrt(numVectors), k);
+        // Respect FAISS min_points_per_centroid to avoid warnings
+        effectiveK = Math.min(effectiveK, Math.max(1, numVectors / MIN_POINTS_PER_CENTROID));
         return effectiveK;
     }
 

@@ -6,6 +6,7 @@
 package org.opensearch.knn.memoryoptsearch.faiss.reorder.kmeansreorder;
 
 import org.apache.lucene.index.FloatVectorValues;
+import org.apache.lucene.index.VectorSimilarityFunction;
 import org.opensearch.test.OpenSearchTestCase;
 
 import java.io.IOException;
@@ -50,7 +51,7 @@ public class KMeansReorderStrategyTests extends OpenSearchTestCase {
     public void testProducesValidPermutation() throws IOException {
         float[][] vectors = generateClusteredVectors(300, 8, 3);
         KMeansReorderStrategy strategy = new KMeansReorderStrategy(3, 10);
-        int[] permutation = strategy.computePermutation(toFloatVectorValues(vectors), 1);
+        int[] permutation = strategy.computePermutation(toFloatVectorValues(vectors), 1, VectorSimilarityFunction.EUCLIDEAN);
         assertValidPermutation(permutation, 300);
     }
 
@@ -58,7 +59,7 @@ public class KMeansReorderStrategyTests extends OpenSearchTestCase {
         float[][] vectors = generateClusteredVectors(500, 8, 4);
         KMeansReorderStrategy strategy = new KMeansReorderStrategy();
         // default k=256, but only 500 vectors so effective k = min(256, 500) = 256
-        int[] permutation = strategy.computePermutation(toFloatVectorValues(vectors), 1);
+        int[] permutation = strategy.computePermutation(toFloatVectorValues(vectors), 1, VectorSimilarityFunction.EUCLIDEAN);
         assertValidPermutation(permutation, 500);
     }
 
@@ -66,7 +67,7 @@ public class KMeansReorderStrategyTests extends OpenSearchTestCase {
         // k=256 but only 10 vectors — should cap at 10
         float[][] vectors = generateClusteredVectors(10, 4, 2);
         KMeansReorderStrategy strategy = new KMeansReorderStrategy(256, 5);
-        int[] permutation = strategy.computePermutation(toFloatVectorValues(vectors), 1);
+        int[] permutation = strategy.computePermutation(toFloatVectorValues(vectors), 1, VectorSimilarityFunction.EUCLIDEAN);
         assertValidPermutation(permutation, 10);
     }
 
@@ -77,7 +78,7 @@ public class KMeansReorderStrategyTests extends OpenSearchTestCase {
         float[][] vectors = generateClusteredVectors(perCluster * k, dim, k);
 
         KMeansReorderStrategy strategy = new KMeansReorderStrategy(k, 25);
-        int[] permutation = strategy.computePermutation(toFloatVectorValues(vectors), 1);
+        int[] permutation = strategy.computePermutation(toFloatVectorValues(vectors), 1, VectorSimilarityFunction.EUCLIDEAN);
         assertValidPermutation(permutation, vectors.length);
 
         int sameClusterAdjacent = 0;
@@ -93,7 +94,7 @@ public class KMeansReorderStrategyTests extends OpenSearchTestCase {
     public void testCustomKAndNiter() throws IOException {
         float[][] vectors = generateClusteredVectors(200, 8, 5);
         KMeansReorderStrategy strategy = new KMeansReorderStrategy(5, 3);
-        int[] permutation = strategy.computePermutation(toFloatVectorValues(vectors), 1);
+        int[] permutation = strategy.computePermutation(toFloatVectorValues(vectors), 1, VectorSimilarityFunction.EUCLIDEAN);
         assertValidPermutation(permutation, 200);
     }
 

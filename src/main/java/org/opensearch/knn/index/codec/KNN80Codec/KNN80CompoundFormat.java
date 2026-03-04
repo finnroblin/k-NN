@@ -46,11 +46,21 @@ public class KNN80CompoundFormat extends CompoundFormat {
         for (KNNEngine knnEngine : KNNEngine.getEnginesThatCreateCustomSegmentFiles()) {
             writeEngineFiles(dir, si, context, knnEngine.getExtension());
         }
+        // Handle .kcs (cluster summary) files same as engine files — extract from compound
+        writeEngineFiles(dir, si, context, ".kcs");
         delegate.write(dir, si, context);
     }
 
     private void writeEngineFiles(Directory dir, SegmentInfo si, IOContext context, String engineExtension) throws IOException {
-        Set<String> engineFiles = si.files().stream().filter(file -> file.endsWith(engineExtension)).collect(Collectors.toSet());
+        // Find engine files both from si.files() and by scanning directory (flush may not register in si.files())
+        Set<String> engineFiles = new HashSet<>();
+        for (String file : si.files()) {
+            if (file.endsWith(engineExtension)) engineFiles.add(file);
+        }
+        String prefix = si.name + "_";
+        for (String file : dir.listAll()) {
+            if (file.startsWith(prefix) && file.endsWith(engineExtension)) engineFiles.add(file);
+        }
         Set<String> segmentFiles = new HashSet<>(si.files());
 
         if (!engineFiles.isEmpty()) {
