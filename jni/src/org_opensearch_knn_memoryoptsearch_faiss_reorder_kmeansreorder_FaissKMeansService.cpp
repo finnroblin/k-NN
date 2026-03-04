@@ -93,6 +93,17 @@ JNIEXPORT jobject JNICALL Java_org_opensearch_knn_memoryoptsearch_faiss_reorder_
         // mmapAddress points directly to float data (mmap'd), not a std::vector wrapper
         float* vectors = reinterpret_cast<float*>(mmapAddress);
 
+        // Pre-fault: sequential touch at page stride to warm the page cache.
+        // Without this, FAISS's random-access subsampling triggers ~100k+ random page faults.
+        {
+            volatile char sum = 0;
+            const char* bytes = reinterpret_cast<const char*>(vectors);
+            long nbytes = (long)numVectors * dimension * sizeof(float);
+            for (long i = 0; i < nbytes; i += 4096) {
+                sum += bytes[i];
+            }
+        }
+
         faiss::ClusteringParameters cp;
         cp.niter = numIterations;
         cp.verbose = false;
